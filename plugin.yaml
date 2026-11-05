@@ -13,6 +13,7 @@ provides_tools:
   - pluginscout_explain
   - pluginscout_backfill
   - pluginscout_contributions
+  - pluginscout_readiness
 provides_hooks:
   - post_tool_call
   - on_skill_lifecycle

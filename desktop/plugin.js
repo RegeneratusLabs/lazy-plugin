@@ -71,13 +71,9 @@ function makeApi(ctx) {
 
   return {
     report: () => rest('/report?format=json'),
-    contributions: days => rest(`/contributions?days=${days}`),
-    packageSkill: (name, days) =>
-      rest('/contributions/package', { method: 'POST', body: JSON.stringify({ name, days }) }),
-    submitSkill: (name, days) =>
-      rest('/contributions/submit', { method: 'POST', body: JSON.stringify({ name, days }) }),
-    submitAll: days =>
-      rest('/contributions/submit-all', { method: 'POST', body: JSON.stringify({ days }) })
+    readiness: () => rest('/readiness'),
+    preparePlugin: name =>
+      rest('/readiness/prepare', { method: 'POST', body: JSON.stringify({ name }) })
   }
 }
 
@@ -86,63 +82,43 @@ function makeApi(ctx) {
 function ScoutPage() {
   return jsx('div', {
     className: 'flex flex-col gap-4 p-5',
-    children: [jsx(ContributionsPanel, {})]
+    children: [jsx(ReadinessPanel, {})]
   })
 }
 
-// ---------- contributions panel (button two)
+// ---------- page
 
-const CONTRIB_RANGES = [30, 60, 90]
-
-const VERDICT_LABEL = {
-  publish: 'publish',
-  scrub: 'needs scrub',
-  thin: 'too thin',
-  already_covered: 'already covered',
-  private: 'keep private'
+const STATUS_STYLE = {
+  ready: { label: 'ready to submit', color: 'var(--ui-accent)' },
+  blocked: { label: 'blocked', color: 'var(--ui-text-tertiary)' },
+  listed: { label: 'in catalog', color: 'var(--ui-text-quaternary)' }
 }
 
-function VerdictChip({ verdict }) {
-  const isPublish = verdict === 'publish'
-  const isScrub = verdict === 'scrub'
-  return jsx('span', {
-    className: 'shrink-0 rounded px-1.5 py-0.5 text-[0.58rem] uppercase tracking-wide',
-    style: {
-      border: `1px solid ${isPublish || isScrub
-        ? 'color-mix(in srgb, var(--ui-accent) 55%, transparent)'
-        : 'var(--ui-stroke-tertiary)'}`,
-      color: isPublish ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)'
-    },
-    children: VERDICT_LABEL[verdict] || verdict
+function CheckLine({ item }) {
+  return jsxs('div', {
+    className: 'flex items-baseline gap-1.5 text-[0.64rem]',
+    children: [
+      jsx('span', { style: { color: item.ok ? 'var(--ui-accent)' : 'var(--ui-text-quaternary)' }, children: item.ok ? '✓' : '✗' }),
+      jsx('span', { className: 'text-(--ui-text-tertiary)', children: item.check }),
+      jsx('span', { className: 'truncate text-(--ui-text-quaternary)', children: item.detail })
+    ]
   })
 }
 
-function ContributionCard({ item, days }) {
-  const [staged, setStaged] = useState(null)
+function PluginRow({ item }) {
+  const [out, setOut] = useState(null)
   const [busy, setBusy] = useState(false)
+  const status = item.in_catalog ? 'listed' : item.ready ? 'ready' : 'blocked'
+  const style = STATUS_STYLE[status]
 
-  function stage() {
+  function prepare() {
     setBusy(true)
-    ContributionsPanel.__api
-      .packageSkill(item.name, days)
-      .then(out => setStaged(out))
-      .catch(err => setStaged({ ok: false, error: String(err && err.message ? err.message : err) }))
+    ReadinessPanel.__api
+      .preparePlugin(item.name)
+      .then(res => setOut(res))
+      .catch(err => setOut({ ok: false, error: String(err && err.message ? err.message : err) }))
       .finally(() => setBusy(false))
   }
-
-  function submit() {
-    setBusy(true)
-    ContributionsPanel.__api
-      .submitSkill(item.name, days)
-      .then(out => setStaged(out))
-      .catch(err => setStaged({ ok: false, error: String(err && err.message ? err.message : err) }))
-      .finally(() => setBusy(false))
-  }
-
-  const canStage = item.verdict === 'publish' || item.verdict === 'scrub'
-  const markers = (item.markers || []).slice(0, 3)
-    .map(m => `${m.kind}:${m.line} ${m.text}`)
-    .join('   ·   ')
 
   return jsxs('div', {
     className: 'rounded border p-3',
@@ -154,34 +130,18 @@ function ContributionCard({ item, days }) {
           jsxs('div', {
             className: 'flex min-w-0 items-center gap-2',
             children: [
-              jsx('div', { className: 'truncate text-[0.8rem] font-medium text-foreground', children: item.name }),
-              jsx(VerdictChip, { verdict: item.verdict }),
-              jsx('span', {
-                className: 'shrink-0 text-[0.58rem] uppercase tracking-wide text-(--ui-text-quaternary)',
-                children: item.contribute_as === 'plugin' ? 'as plugin' : 'as skill'
-              })
+              jsx('span', { className: 'truncate text-[0.8rem] font-medium text-foreground', children: item.name }),
+              jsx('span', { className: 'shrink-0 text-[0.58rem] uppercase tracking-wide', style: { color: style.color }, children: style.label }),
+              item.tier
+                ? jsx('span', { className: 'shrink-0 text-[0.58rem] text-(--ui-text-quaternary)', children: item.tier })
+                : null
             ]
           }),
-          jsx('div', { className: 'shrink-0 text-[0.6rem] text-(--ui-text-quaternary)', children: item.created || '' })
-        ]
-      }),
-      jsx('div', { className: 'mt-1 text-[0.7rem] text-(--ui-text-secondary)', children: item.description }),
-      jsx('div', {
-        className: 'mt-1.5 flex flex-col gap-0.5',
-        children: (item.reasons || []).map((r, i) =>
-          jsx('div', { className: 'text-[0.66rem] text-(--ui-text-tertiary)', children: `· ${r}` }, i))
-      }),
-      markers
-        ? jsx('div', { className: 'mt-1.5 truncate font-mono text-[0.62rem] text-(--ui-text-quaternary)', children: markers })
-        : null,
-      canStage
-        ? jsxs('div', {
-            className: 'mt-2 flex flex-wrap items-center gap-2',
-            children: [
-              jsx('button', {
-                onClick: submit,
+          !item.in_catalog
+            ? jsx('button', {
+                onClick: prepare,
                 disabled: busy,
-                className: 'shrink-0 rounded px-2.5 py-1 text-[0.66rem] font-medium',
+                className: 'shrink-0 rounded px-2.5 py-1 text-[0.64rem] font-medium',
                 style: {
                   background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
                   border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
@@ -189,55 +149,37 @@ function ContributionCard({ item, days }) {
                   whiteSpace: 'nowrap',
                   cursor: busy ? 'default' : 'pointer'
                 },
-                children: busy ? 'Preparing…' : 'Prepare submission'
-              }),
-              jsx('button', {
-                onClick: stage,
-                disabled: busy,
-                className: 'shrink-0 rounded px-2 py-1 text-[0.64rem]',
-                style: {
-                  border: '1px solid var(--ui-stroke-secondary)',
-                  color: 'var(--ui-text-secondary)',
-                  whiteSpace: 'nowrap',
-                  cursor: busy ? 'default' : 'pointer'
-                },
-                children: 'Scrubbed copy only'
+                children: busy ? 'Writing…' : 'Prepare catalog entry'
               })
+            : null
+        ]
+      }),
+      jsx('div', {
+        className: 'mt-1.5 flex flex-col gap-0.5',
+        children: (item.blockers || []).map((b, i) =>
+          jsx('div', { className: 'text-[0.66rem]', style: { color: 'var(--ui-text-tertiary)' }, children: `✗ ${b}` }, `b${i}`))
+      }),
+      jsx('div', {
+        className: 'mt-1 flex flex-col gap-0.5',
+        children: (item.review || []).map((r, i) =>
+          jsx('div', { className: 'text-[0.64rem] text-(--ui-text-quaternary)', children: `· ${r}` }, `r${i}`))
+      }),
+      (item.checks || []).length
+        ? jsx('details', {
+            className: 'mt-1.5',
+            children: [
+              jsx('summary', { className: 'cursor-pointer text-[0.62rem] text-(--ui-text-quaternary)', children: `${item.checks.length} checks` }),
+              jsx('div', { className: 'mt-1 flex flex-col gap-0.5', children: (item.checks || []).map((c, i) => jsx(CheckLine, { item: c }, i)) })
             ]
           })
         : null,
-      staged
+      out
         ? jsxs('div', {
             className: 'mt-2 rounded p-2',
             style: { background: 'var(--ui-bg-tertiary)' },
             children: [
-              jsx('div', {
-                className: 'truncate font-mono text-[0.62rem]',
-                style: { color: staged.ok ? 'var(--ui-text-secondary)' : 'var(--ui-text-quaternary)' },
-                children: staged.ok ? staged.dir : (staged.error || 'failed')
-              }),
-              staged.ok && staged.files
-                ? jsx('div', {
-                    className: 'mt-1 font-mono text-[0.6rem] text-(--ui-text-quaternary)',
-                    children: staged.files.join('  ·  ')
-                  })
-                : null,
-              staged.validation
-                ? jsx('div', {
-                    className: 'mt-1 font-mono text-[0.6rem]',
-                    style: { color: staged.validation.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-                    children: staged.validation.ok
-                      ? 'hermes plugins validate: PASS'
-                      : `blocked — ${(staged.validation.output || []).filter(l => l.includes('✗')).join(' ') || 'validation failed'}`
-                  })
-                : null,
-              (staged.steps || []).length
-                ? jsx('div', {
-                    className: 'mt-1.5 flex flex-col gap-0.5',
-                    children: staged.steps.map((s, i) =>
-                      jsx('div', { className: 'font-mono text-[0.6rem] text-(--ui-text-tertiary)', children: `${i + 1}. ${s}` }, i))
-                  })
-                : null
+              jsx('div', { className: 'truncate font-mono text-[0.62rem] text-(--ui-text-secondary)', children: out.ok ? out.dir : (out.error || 'failed') }),
+              out.ok ? jsx('div', { className: 'mt-1 font-mono text-[0.6rem] text-(--ui-text-quaternary)', children: (out.files || []).join('  ·  ') }) : null
             ]
           })
         : null
@@ -245,40 +187,27 @@ function ContributionCard({ item, days }) {
   })
 }
 
-function ContributionsPanel() {
-  const [days, setDays] = useState(60)
+function ReadinessPanel() {
   const [data, setData] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
-  const [batch, setBatch] = useState(null)
-  const [batchBusy, setBatchBusy] = useState(false)
-
-  function prepareAll() {
-    setBatchBusy(true)
-    ContributionsPanel.__api
-      .submitAll(days)
-      .then(out => setBatch(out))
-      .catch(err => setBatch({ ok: false, error: String(err && err.message ? err.message : err) }))
-      .finally(() => setBatchBusy(false))
-  }
+  const [showListed, setShowListed] = useState(false)
 
   useEffect(() => {
     let live = true
     setBusy(true)
-    ContributionsPanel.__api
-      .contributions(days)
-      .then(payload => {
-        if (!live) return
-        setData(payload)
-        setError(payload && payload.ok === false ? payload.error || 'scan failed' : '')
-      })
+    ReadinessPanel.__api
+      .readiness()
+      .then(payload => { if (live) { setData(payload); setError(payload && payload.ok === false ? payload.error || 'audit failed' : '') } })
       .catch(err => { if (live) setError(String(err && err.message ? err.message : err)) })
       .finally(() => { if (live) setBusy(false) })
     return () => { live = false }
-  }, [days])
+  }, [])
 
-  const items = (data && data.candidates) || []
-  const counts = (data && data.counts) || {}
+  const plugins = (data && data.plugins) || []
+  const unlisted = plugins.filter(p => !p.in_catalog)
+  const ready = unlisted.filter(p => p.ready).length
+  const listed = plugins.filter(p => p.in_catalog)
 
   return jsxs('div', {
     className: 'rounded border p-3',
@@ -289,88 +218,51 @@ function ContributionsPanel() {
         children: [
           jsxs('div', {
             children: [
-              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Skills worth sharing' }),
+              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Plugins you could submit' }),
               jsx('div', {
                 className: 'mt-0.5 text-[0.68rem] text-(--ui-text-quaternary)',
-                children: 'written by the agent itself · screened for private paths, hosts and accounts · nothing is published'
+                children: 'every installed plugin against the catalog admission rules · nothing is pushed'
               })
             ]
           }),
           jsxs('div', {
-            className: 'flex items-center gap-1',
+            className: 'flex items-center gap-1 text-[0.64rem] text-(--ui-text-quaternary)',
             children: [
-              ...CONTRIB_RANGES.map(d =>
-                jsx('button', {
-                  key: d,
-                  onClick: () => setDays(d),
-                  className: 'rounded px-2 py-1 text-[0.66rem]',
-                  style: {
-                    border: '1px solid var(--ui-stroke-tertiary)',
-                    color: days === d ? 'var(--ui-text-primary)' : 'var(--ui-text-tertiary)',
-                    background: days === d ? 'var(--ui-bg-tertiary)' : 'transparent',
-                    whiteSpace: 'nowrap'
-                  },
-                  children: `${d}d`
-                }, d)
-              ),
-              jsx('span', {
-                className: 'ml-1 text-[0.64rem] text-(--ui-text-quaternary)',
-                children: busy ? 'scanning…' : `${items.length} shown`
-              }),
-              jsx('button', {
-                onClick: prepareAll,
-                disabled: batchBusy || !items.length,
-                className: 'ml-2 shrink-0 rounded px-2.5 py-1 text-[0.66rem] font-medium',
-                style: {
-                  background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
-                  color: 'var(--ui-text-primary)',
-                  whiteSpace: 'nowrap',
-                  cursor: batchBusy ? 'default' : 'pointer',
-                  opacity: items.length ? 1 : 0.5
-                },
-                children: batchBusy ? 'Preparing…' : 'Prepare all'
-              })
+              jsx('span', { children: busy ? 'auditing…' : `${unlisted.length} not listed` }),
+              jsx('span', { children: '·' }),
+              jsx('span', { style: { color: 'var(--ui-accent)' }, children: `${ready} ready` }),
+              jsx('span', { children: '·' }),
+              jsx('span', { children: `${unlisted.length - ready} blocked` })
             ]
           })
         ]
       }),
-      error
-        ? jsx('div', { className: 'mt-2 text-[0.68rem] text-(--ui-text-tertiary)', children: error })
-        : null,
-      items.length
-        ? jsx('div', {
-            className: 'mt-3 flex flex-col gap-2',
-            children: items.slice(0, 8).map((item, i) => jsx(ContributionCard, { item, days }, `${item.name}-${i}`))
+      error ? jsx('div', { className: 'mt-2 text-[0.68rem] text-(--ui-text-tertiary)', children: error }) : null,
+      jsx('div', {
+        className: 'mt-3 flex flex-col gap-2',
+        children: unlisted.map(p => jsx(PluginRow, { item: p }, p.name))
+      }),
+      listed.length
+        ? jsxs('div', {
+            className: 'mt-3',
+            children: [
+              jsx('button', {
+                onClick: () => setShowListed(!showListed),
+                className: 'text-[0.64rem] text-(--ui-text-quaternary)',
+                style: { background: 'none', border: 'none', cursor: 'pointer', padding: 0 },
+                children: `${showListed ? '▾' : '▸'} ${listed.length} already in the catalog`
+              }),
+              showListed
+                ? jsx('div', { className: 'mt-2 flex flex-col gap-2', children: listed.map(p => jsx(PluginRow, { item: p }, p.name)) })
+                : null
+            ]
           })
-        : null,
-      batch
-        ? jsx('div', {
-            className: 'mt-2 rounded px-2 py-1 font-mono text-[0.62rem]',
-            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
-            children: batch.ok
-              ? `${batch.total} prepared · ${batch.passed} passed validate · ${batch.total - batch.passed} blocked · ${Object.entries(batch.skipped || {}).map(([k, v]) => v + ' ' + k).join(', ')}`
-
-              : (batch.error || 'batch failed')
-          })
-        : null,
-      jsxs('div', {
-        className: 'mt-2 flex justify-between text-[0.6rem] text-(--ui-text-quaternary)',
-        children: [
-          jsx('div', {
-            children: `${(data && data.total_agent_skills) || 0} agent-written · ${counts.publish || 0} publishable · ${counts.scrub || 0} need scrubbing · ${counts.private || 0} keep private`
-          }),
-          jsx('div', { children: 'deterministic screen — no tokens spent' })
-        ]
-      })
+        : null
     ]
   })
 }
 
-ContributionsPanel.__api = null
-
-// The loader is injected at register() time, where ctx.rest exists.
-ScoutPage.__api = null
+ReadinessPanel.__api = null
 
 function ScoutChip() {
   const [count, setCount] = useState(null)
@@ -403,7 +295,7 @@ export default {
     const api = makeApi(ctx)
     ScoutPage.__api = api
     ScoutChip.__api = api
-    ContributionsPanel.__api = api
+    ReadinessPanel.__api = api
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: ROUTE }, render: () => jsx(ScoutPage, {}) })
     ctx.register({
       id: 'nav',

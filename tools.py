@@ -138,10 +138,25 @@ def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
         return _err(exc, "skill screening failed; nothing was written")
 
 
+def handle_readiness(params: Optional[dict] = None, **kwargs: Any) -> str:
+    """Facts about submittability; nothing is ranked and nothing is pushed."""
+    params = params or {}
+    try:
+        mod = _load_sibling("readiness", "readiness.py")
+        mod._CORE = core
+        name = str(params.get("prepare") or "").strip()
+        if name:
+            return json.dumps(mod.prepare(name, deep=params.get("deep", True) is not False))
+        return json.dumps(mod.audit(deep=params.get("deep", True) is not False))
+    except Exception as exc:
+        return _err(exc, "readiness audit failed; nothing was written")
+
+
 HANDLERS = {
     "pluginscout_report": handle_report,
     "pluginscout_refresh": handle_refresh,
     "pluginscout_explain": handle_explain,
     "pluginscout_backfill": handle_backfill,
     "pluginscout_contributions": handle_contributions,
+    "pluginscout_readiness": handle_readiness,
 }

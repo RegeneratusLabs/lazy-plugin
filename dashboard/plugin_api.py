@@ -27,6 +27,14 @@ def _core():
     return mod
 
 
+def _readiness_mod():
+    spec = importlib.util.spec_from_file_location(
+        "pluginscout_readiness_api", _PLUGIN_DIR / "readiness.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
 def _contrib_mod():
     spec = importlib.util.spec_from_file_location(
         "pluginscout_contrib_api", _PLUGIN_DIR / "skills_contrib.py")
@@ -107,6 +115,24 @@ async def contributions_submit_all(payload: dict | None = None):
         days = 60
     mod = _contrib_mod()
     return await asyncio.to_thread(mod.submit_all, days)
+
+
+@router.get("/readiness")
+async def readiness(deep: int = 1):
+    """Every installed plugin against the catalog admission rules. Facts, no ranking."""
+    mod = _readiness_mod()
+    return await asyncio.to_thread(mod.audit, bool(deep))
+
+
+@router.post("/readiness/prepare")
+async def readiness_prepare(payload: dict | None = None):
+    """Generate the catalog entry for one plugin. Never pushes anything."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "name is required"}, status_code=400)
+    mod = _readiness_mod()
+    return await asyncio.to_thread(mod.prepare, name)
 
 
 @router.get("/health")

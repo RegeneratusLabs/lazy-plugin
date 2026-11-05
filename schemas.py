@@ -107,4 +107,27 @@ CONTRIBUTIONS = {
     },
 }
 
-ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, CONTRIBUTIONS]
+READINESS = {
+    "name": "pluginscout_readiness",
+    "description": (
+        "Audit the installed Hermes plugins against the marketplace catalog's admission rules and "
+        "say which could be submitted: manifest, version, description, LICENSE, declared repository, "
+        "declared capabilities, self-updater scan (rule 3), and hermes plugins validate (rule 7). "
+        "Returns ready/blocked per plugin with the exact blocker text, and can generate the "
+        "plugin-catalog YAML entry plus the PR steps. Deterministic — no model call, nothing pushed."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "prepare": {"type": "string",
+                        "description": "Generate the catalog entry + SUBMISSION.md for this plugin "
+                                       "instead of only auditing."},
+            "deep": {"type": "boolean",
+                     "description": "Run the validator and registration probe per plugin "
+                                    "(default true; each costs a subprocess)."},
+        },
+        "required": [],
+    },
+}
+
+ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, CONTRIBUTIONS, READINESS]

@@ -43,39 +43,19 @@
   .status { border-top:1px solid var(--stroke); padding:5px 12px; display:flex; justify-content:flex-end; gap:14px;
              font-size:11px; color:var(--fg3); background:var(--bg2); position:fixed; bottom:0; left:0; right:0; }
   .status b { color:var(--fg2); font-weight:500; }
-.lnk { font-size:10px; color:var(--accent); }
-  .rec-link { margin-top:3px; }
-  .rec-detail { font-size:9.5px; color:var(--fg4); margin-top:2px; }
-  .rp-pill { border:1px solid var(--stroke); border-radius:5px; padding:3px 7px; font-size:10px; color:var(--fg3); margin-left:5px; }
-  .rp-pill.on { background:var(--bg3); color:var(--fg); }
-  .rp-btn { background:color-mix(in srgb, var(--accent) 20%, transparent); border:1px solid color-mix(in srgb, var(--accent) 62%, transparent);
-            color:var(--fg); border-radius:5px; padding:3px 9px; font-size:10.5px; font-weight:600; margin-left:7px; }
-  .rp-count { font-size:10px; color:var(--fg4); margin-left:6px; }
-  .chip { border:1px solid var(--stroke); border-radius:4px; padding:1px 5px; font-size:8.5px;
-          text-transform:uppercase; letter-spacing:.06em; color:var(--fg3); }
-  .chip.acc { border-color:color-mix(in srgb, var(--accent) 55%, transparent); color:var(--accent); }
-  .ccard { border:1px solid var(--stroke); border-radius:6px; padding:10px 11px; margin-top:8px; }
-  .cc-top { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
-  .cc-left { display:flex; gap:7px; align-items:center; min-width:0; }
-  .cc-name { font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .cc-kind { font-size:8.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg4); }
-  .cc-date { font-size:9.5px; color:var(--fg4); }
-  .cc-desc { font-size:10.5px; color:var(--fg2); margin-top:3px; }
-  .cr { font-size:10px; color:var(--fg3); margin-top:2px; }
-  .cc-actions { margin-top:6px; }
-  .cc-btn { border:1px solid var(--stroke); border-radius:5px; padding:3px 7px; font-size:9.5px; color:var(--fg2); margin-right:5px; }
-  .cc-btn.primary { background:color-mix(in srgb, var(--accent) 20%, transparent);
-    border-color:color-mix(in srgb, var(--accent) 62%, transparent); color:var(--fg); font-weight:600; }
 
-  .lnk.dim { color:var(--fg4); }
-
-  .staged { border-top:1px dashed var(--stroke); margin-top:7px; padding-top:6px; }
-  .mono { font-family: ui-monospace, Menlo, monospace; font-size:9.5px; color:var(--fg2); }
-  .mono.dim { color:var(--fg4); }
-  .mono.ok { color:var(--accent); margin-top:3px; }
-  .mono.warn { color:#d08a3e; }
-  .batch { margin-top:8px; border-radius:5px; background:var(--bg3); padding:5px 8px;
-           font-family: ui-monospace, Menlo, monospace; font-size:9.5px; color:var(--fg2); }
+  .pcard { border:1px solid var(--stroke); border-radius:6px; padding:9px 11px; margin-top:8px; }
+  .pc-top { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .pc-left { display:flex; gap:8px; align-items:baseline; }
+  .pc-name { font-size:12px; font-weight:600; }
+  .pc-status { font-size:8.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg4); }
+  .pc-status.ok { color:var(--accent); }
+  .pc-checks { font-size:9px; color:var(--fg4); margin-top:4px; }
+  .blk { font-size:10px; color:var(--fg3); margin-top:2px; }
+  .rev { font-size:9.5px; color:var(--fg4); margin-top:1px; }
+  .pbtn { background:color-mix(in srgb, var(--accent) 20%, transparent); border:1px solid color-mix(in srgb, var(--accent) 62%, transparent);
+          color:var(--fg); border-radius:5px; padding:3px 8px; font-size:9.5px; font-weight:600; white-space:nowrap; }
+  .rp-count.acc { color:var(--accent); }
 
 
 </style>
@@ -89,18 +69,18 @@
     <div class="item"><span class="dot"></span>Cron</div>
   </div>
   <div class="main">
-    
     <div class="rpanel">
   <div class="rp-head">
-    <div><div class="rp-title">Skills worth sharing</div>
-    <div class="rp-sub">written by the agent itself · screened for private strings · every package validated before you see it</div></div>
-    <div class="rp-ctl"><span class="rp-pill">30d</span><span class="rp-pill on">60d</span><span class="rp-pill">90d</span>
-    <span class="rp-count">30 shown</span><span class="rp-btn">Prepare all</span></div>
+    <div><div class="rp-title">Plugins you could submit</div>
+    <div class="rp-sub">every installed plugin against the catalog admission rules · nothing is pushed</div></div>
+    <div class="rp-ctl"><span class="rp-count">4 not listed</span><span class="rp-count">·</span>
+    <span class="rp-count acc">0 ready</span><span class="rp-count">·</span>
+    <span class="rp-count">4 blocked</span></div>
   </div>
-  <div class="ccard"><div class="cc-top"><div class="cc-left"><span class="cc-name">project-handover-briefs</span><span class="chip acc">publish</span></div><span class="cc-date">2026-09-18</span></div><div class="cc-desc">Use when handing off or reviewing an agent-owned project.</div><div class="cr">· no personal references, real steps, clear description</div><div class="cc-actions"><span class="cc-btn primary">Prepare submission</span><span class="cc-btn">Scrubbed copy</span></div><div class="staged"><div class="mono">/home/josh/.hermes/pluginscout/outbox/project-handover-briefs</div><div class="mono dim">plugin.json · skills/…/SKILL.md · plugin-catalog/…yaml · SUBMISSION.md</div><div class="mono ok">hermes plugins validate: PASS</div></div></div><div class="ccard"><div class="cc-top"><div class="cc-left"><span class="cc-name">subagent-fanout-orchestration</span><span class="chip acc">publish</span></div><span class="cc-date">2026-09-19</span></div><div class="cc-desc">Use when orchestrating a parallel subagent fan-out.</div><div class="cr">· no personal references, real steps, clear description</div><div class="cc-actions"><span class="cc-btn primary">Prepare submission</span><span class="cc-btn">Scrubbed copy</span></div></div><div class="ccard"><div class="cc-top"><div class="cc-left"><span class="cc-name">oss-ecosystem-surveys</span><span class="chip acc">publish</span></div><span class="cc-date">2026-09-29</span></div><div class="cc-desc">Use when surveying an OSS project plugin ecosystem.</div><div class="cr">· no personal references, real steps, clear description</div><div class="cc-actions"><span class="cc-btn primary">Prepare submission</span><span class="cc-btn">Scrubbed copy</span></div></div>
-  <div class="batch">30 prepared · 28 passed validate · 2 blocked · 5 keep private</div>
-  <div class="rp-foot"><div>35 agent-written · 18 publishable · 12 need scrubbing · 5 keep private</div><div>deterministic screen + real validator — no tokens spent</div></div>
+  <div class="pcard"><div class="pc-top"><div class="pc-left"><span class="pc-name">deepseek</span><span class="pc-status ">blocked</span></div><span class="pbtn">Prepare catalog entry</span></div><div class="blk">✗ license: no LICENSE file and none declared</div><div class="blk">✗ repository: no repository URL in the manifest (rule 5 needs one)</div><div class="pc-checks">8 checks · /home/josh/.hermes/plugins/deepseek</div></div><div class="pcard"><div class="pc-top"><div class="pc-left"><span class="pc-name">opencode-go</span><span class="pc-status ">blocked</span></div><span class="pbtn">Prepare catalog entry</span></div><div class="blk">✗ license: no LICENSE file and none declared</div><div class="blk">✗ repository: no repository URL in the manifest (rule 5 needs one)</div><div class="pc-checks">8 checks · /home/josh/.hermes/plugins/opencode-go</div></div><div class="pcard"><div class="pc-top"><div class="pc-left"><span class="pc-name">pluginscout</span><span class="pc-status ">blocked</span></div><span class="pbtn">Prepare catalog entry</span></div><div class="blk">✗ license: no LICENSE file and none declared</div><div class="blk">✗ repository: no repository URL in the manifest (rule 5 needs one)</div><div class="pc-checks">8 checks · /home/josh/.hermes/plugins/pluginscout</div></div><div class="pcard"><div class="pc-top"><div class="pc-left"><span class="pc-name">obsidian</span><span class="pc-status ">blocked</span></div><span class="pbtn">Prepare catalog entry</span></div><div class="blk">✗ license: no LICENSE file and none declared</div><div class="blk">✗ repository: no repository URL in the manifest (rule 5 needs one)</div><div class="blk">✗ capabilities declared: no provides_* keys — reviewers cannot see what it registers</div><div class="pc-checks">8 checks · /home/josh/.hermes/plugins/obsidian</div></div>
+  <div class="rp-foot"><div>▸ 8 already in the catalog · 976 catalog entries</div><div>deterministic checks — no tokens spent</div></div>
 </div>
+    
     <div class="foot">
       <span>976 catalog entries · 4 of 200 skills overlap a plugin</span>
       <span>read-only · no LLM in the matching path</span>
