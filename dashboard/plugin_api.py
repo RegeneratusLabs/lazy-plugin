@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import threading
+import time
+import uuid
 import importlib.util
 import json
 import sys
@@ -290,31 +293,65 @@ no self-updating code, owner-or-major-contributor submission.
             "files": [f"plugin-catalog/{name}.yaml", "SUBMISSION.md"] + ([f"{name}.tar.gz"] if tarball else [])}
 
 
+JOBS: dict[str, dict] = {}
+
+
 @router.post("/create")
 async def create_plugin(payload: dict | None = None):
-    """Describe it, or pick a skill/cron job, and get a plugin that validates."""
+    """Start a build. Returns a job id — a model call plus validation outlives any HTTP request."""
     payload = payload or {}
     idea = str(payload.get("idea") or "").strip()
     kind = str(payload.get("source_kind") or "").strip()
     source = str(payload.get("source_name") or "").strip()
-    context = await asyncio.to_thread(_source_context, kind, source)
     if not idea and source:
         idea = f"Turn this {kind} into a plugin: {source}"
     if len(idea) < 10:
         return JSONResponse({"ok": False, "stage": "input",
                              "problems": ["describe the plugin, or pick a skill or cron job"]},
                             status_code=400)
-    ctx, meta = _find_ctx()
-    llm = getattr(ctx, "llm", None) if ctx is not None else None
-    creator = _creator_mod()
-    drafted = await asyncio.to_thread(creator.draft_spec, idea, llm, context)
-    if not drafted.get("ok"):
-        drafted["ctx"] = meta
-        return drafted
-    written = await asyncio.to_thread(creator.create, drafted["spec"])
-    written["draft"] = {"stage": drafted.get("stage"), "meta": drafted.get("meta")}
-    written["source"] = {"kind": kind, "name": source, "chars": len(context)}
-    return written
+    job = uuid.uuid4().hex[:12]
+    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
+                 "started": time.time()}
+    threading.Thread(target=_run_create, args=(job, idea, kind, source), daemon=True).start()
+    return {"ok": True, "job": job, "stage": "starting"}
+
+
+def _run_create(job: str, idea: str, kind: str, source: str) -> None:
+    entry = JOBS[job]
+    try:
+        entry["stage"] = "reading what you picked"
+        context = _source_context(kind, source)
+        ctx, meta = _find_ctx()
+        llm = getattr(ctx, "llm", None) if ctx is not None else None
+        creator = _creator_mod()
+        entry["stage"] = "asking the model for a spec"
+        drafted = creator.draft_spec(idea, llm, context)
+        if not drafted.get("ok"):
+            drafted["ctx"] = meta
+            entry.update(ok=False, stage="refused", result=drafted,
+                         error=" ".join(drafted.get("problems") or []) or "the model gave no usable spec")
+            return
+        entry["stage"] = "writing the files and validating"
+        written = creator.create(drafted["spec"])
+        written["draft"] = {"stage": drafted.get("stage"), "meta": drafted.get("meta")}
+        written["source"] = {"kind": kind, "name": source, "chars": len(context)}
+        entry.update(ok=bool(written.get("ok")), stage="done", result=written,
+                     error=None if written.get("ok") else "the generated plugin did not validate")
+    except Exception as exc:
+        entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
+    finally:
+        entry["finished"] = time.time()
+        cutoff = time.time() - 3600
+        for key in [k for k, v in JOBS.items() if v.get("started", 0) < cutoff]:
+            JOBS.pop(key, None)
+
+
+@router.get("/create/job/{job}")
+async def create_job(job: str):
+    entry = JOBS.get(job)
+    if entry is None:
+        return {"ok": False, "job": job, "error": "unknown or expired job", "stage": "gone"}
+    return entry
 
 
 @router.get("/sources")

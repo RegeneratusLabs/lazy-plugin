@@ -37,6 +37,7 @@ function makeApi(ctx) {
     sources: () => rest('/sources'),
     created: () => rest('/created'),
     create: payload => rest('/create', { method: 'POST', body: payload }),
+    job: id => rest(`/create/job/${id}`),
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
     share: name => rest('/created/share', { method: 'POST', body: { name } })
   }
@@ -225,24 +226,67 @@ function CreatorPanel() {
   const options = kind === 'skill' ? sources.skills : sources.cron
   const canBuild = !busy && (idea.trim().length >= 10 || !!sourceName)
 
+  const STAGE_TEXT = {
+    'reading what you picked': 'reading what you picked…',
+    'asking the model for a spec': 'asking the model…',
+    'writing the files and validating': 'writing and checking the files…'
+  }
+
+  function fail(message) {
+    setBusy(false)
+    setStage('')
+    setError(message)
+  }
+
+  function handle(state) {
+    if (state.stage === 'gone') {
+      fail('the build finished but its result expired — check Built so far')
+      return
+    }
+    if (state.stage && STAGE_TEXT[state.stage]) setStage(STAGE_TEXT[state.stage])
+    if (state.ok === null || state.ok === undefined) return false
+    setBusy(false)
+    setStage('')
+    if (state.ok && state.result) {
+      setOut(state.result)
+      if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+    } else {
+      setError(state.error || 'the build did not produce a plugin')
+    }
+    return true
+  }
+
   function build() {
     setBusy(true)
     setOut(null)
     setError('')
-    setStage('asking the model for a spec…')
+    setStage('starting…')
     CreatorPanel.__api
       .create({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
-      .then(result => {
-        setStage('')
-        if (result && result.ok && result.stage === 'written') {
-          setOut(result)
+      .then(start => {
+        if (!start || !start.job) {
+          const problems = (start && start.problems) || []
+          fail(problems.length ? problems.join(' · ') : (start && start.error) || 'could not start the build')
           return
         }
-        const problems = (result && result.problems) || []
-        setError(problems.length ? problems.join(' · ') : (result && result.error) || 'the build produced nothing')
+        let waited = 0
+        const tick = () => {
+          CreatorPanel.__api
+            .job(start.job)
+            .then(state => {
+              if (handle(state)) return
+              waited += 1200
+              if (waited > 300000) {
+                fail('this is taking longer than it should — check Built so far in a moment')
+                return
+              }
+              setTimeout(tick, 1200)
+            })
+            .catch(err => fail(String(err && err.message ? err.message : err)))
+        }
+        setTimeout(tick, 800)
       })
-      .catch(err => { setStage(''); setError(String(err && err.message ? err.message : err)) })
-      .finally(() => setBusy(false))
+      .catch(err => fail(String(err && err.message ? err.message : err)))
   }
 
   return jsxs('div', {
@@ -334,8 +378,9 @@ function CreatorPanel() {
 }
 
 CreatorPanel.__api = null
+CreatorPanel.__onBuilt = null
 
-function BuiltSoFar() {
+function BuiltSoFar({ version }) {
   const [rows, setRows] = useState([])
   useEffect(() => {
     let live = true
@@ -344,7 +389,7 @@ function BuiltSoFar() {
       .then(payload => { if (live) setRows((payload && payload.created) || []) })
       .catch(() => {})
     return () => { live = false }
-  }, [])
+  }, [version])
   if (!rows.length) return null
   return jsxs('div', {
     className: 'rounded border p-3',
@@ -373,9 +418,11 @@ function BuiltSoFar() {
 }
 
 function LazyPage() {
+  const [version, setVersion] = useState(0)
+  CreatorPanel.__onBuilt = () => setVersion(value => value + 1)
   return jsxs('div', {
     className: 'flex flex-col gap-4 p-5',
-    children: [jsx(CreatorPanel, {}), jsx(BuiltSoFar, {})]
+    children: [jsx(CreatorPanel, {}), jsx(BuiltSoFar, { version })]
   })
 }
 
