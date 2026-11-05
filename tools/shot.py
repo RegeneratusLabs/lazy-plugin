@@ -66,6 +66,8 @@ _contrib_css = Path("/home/josh/.hermes/cache/scratch/contrib_panel.css")
 panel = _panel_html.read_text() if _panel_html.exists() else ""
 panel_css = _panel_css.read_text() if _panel_css.exists() else ""
 contrib_panel = _contrib_html.read_text() if _contrib_html.exists() else ""
+_contrib_json = Path("/home/josh/.hermes/cache/scratch/contrib-sample.json")
+contrib_counts = json.loads(_contrib_json.read_text()).get("counts", {}) if _contrib_json.exists() else {}
 contrib_css = _contrib_css.read_text() if _contrib_css.exists() else ""
 
 gap_rows = "\n".join(
@@ -135,20 +137,6 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
     <div class="item"><span class="dot"></span>Cron</div>
   </div>
   <div class="main">
-    <div class="head">
-      <h1>Capability field</h1>
-      <div class="sub">{field['start']} → {field['end']} · last {field['days']} days</div>
-    </div>
-    <div class="field">
-      <div style="display:flex;flex-direction:column;gap:3px">{wd_html}</div>
-      <div class="grid">{grid_html}</div>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="label">gap events</div><div class="value">{field['total']}</div><div class="hint">measured, not inferred</div></div>
-      <div class="stat"><div class="label">active days</div><div class="value">{field['active_days']}</div><div class="hint">peak {field['max']}/day</div></div>
-      <div class="stat"><div class="label">peak day</div><div class="value">{field['max']}</div><div class="hint">most gaps in one day</div></div>
-      <div class="stat"><div class="label">sources</div><div class="value">{len(sources)}</div><div class="hint">{' · '.join(sources)}</div></div>
-    </div>
     {panel}
     {contrib_panel}
     <div class="foot">
@@ -157,13 +145,13 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
     </div>
   </div>
 </div>
-<div class="status"><span><b>{report['gaps']['total']} gaps</b></span><span>plugin host: default</span></div>
+<div class="status"><span><b>{contrib_counts.get('publish', 0)} to share</b></span><span>plugin host: default</span></div>
 """
 Path("/home/josh/projects/pluginscout/assets/preview.html").write_text(DOC)
 
 out = "/home/josh/projects/pluginscout/assets/preview.png"
 subprocess.run(["chromium", "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-                "--force-device-scale-factor=2", "--window-size=1120,1560",
+                "--force-device-scale-factor=2", "--window-size=1120,1290",
                 f"--screenshot={out}", "file:///home/josh/projects/pluginscout/assets/preview.html"],
                check=False, capture_output=True, timeout=120)
 print("png:", out, Path(out).stat().st_size if Path(out).exists() else "MISSING")

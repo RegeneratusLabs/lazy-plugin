@@ -43,6 +43,41 @@ router it imported, so a new route is a 404 until the process that owns the dash
 restarts — while every route that existed at startup keeps working. That looks exactly like one
 broken button, so the page now says which it is instead of showing `HTTP 404`.
 
+## The page
+
+Two panels, both reading the profile's own history:
+
+1. **Where a plugin would have saved you work** — one grounded model pass over a chosen window.
+2. **Skills worth sharing** — the agent's own skills, screened for publishability.
+
+The heatmap and the ranked gap list were cut: they measured the wrong thing (1 of 108 gaps was
+catalog-answerable, and the top entries were `pip install` problems, not plugin problems). The gap
+ledger still records in the background, and `/gaps` plus the `pluginscout_report` tool still return
+it — it just isn't the product.
+
+## Skills worth sharing
+
+The second panel screens the skills the **agent itself wrote** and says which are worth publishing:
+`publish`, `needs scrub`, `too thin`, `already covered` by a catalog plugin, or `keep private`.
+Screening is deterministic — no model call, no token spend — and every verdict names the exact
+strings that decided it (personal paths, hosts, names, org, accounts, ports, with line numbers).
+
+`Stage for submission` writes a bundle to the plugin's outbox: `SKILL.md` with those strings
+replaced by placeholders (`<path>`, `<host>`, `<name>`, `<port>`), a `README.md` that credits the
+author under MIT, and `CONTRIBUTION.json` recording every redaction. Private skills are refused,
+not published with a warning. Skills whose bodies need the turn loop, a schedule or a UI are
+flagged `as plugin` rather than `as skill`.
+
+On a real profile (60 days): **35 agent-written skills — 18 publishable, 12 need scrubbing,
+5 keep private.**
+
+## After changing `plugin_api.py`, restart the backend
+
+The dashboard mounts plugin API routes **in-process, at startup**. A running gateway keeps the
+router it imported, so a new route is a 404 until the process that owns the dashboard port
+restarts — while every route that existed at startup keeps working. That looks exactly like one
+broken button, so the page now says which it is instead of showing `HTTP 404`.
+
 ## Visual: the capability field
 
 A native desktop page (`desktop/plugin.js`, no build step) with a sidebar entry, a palette command,
