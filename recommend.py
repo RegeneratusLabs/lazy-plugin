@@ -185,6 +185,10 @@ def ground(parsed: dict, digest: dict) -> tuple[list, list]:
 
 # ---------- catalog join
 
+def _marketplace():
+    return _load("marketplace", "marketplace.py")
+
+
 def _catalog_index() -> tuple[list, set]:
     try:
         entries = _CORE.load_catalog()["entries"]
@@ -255,24 +259,30 @@ def match_catalog(rec: dict, entries: list, installed: set) -> tuple[list, list]
 
 
 def enrich(recs: list) -> list:
-    entries, installed = _catalog_index()
+    """Ask the marketplace (same catalog JSON `hermes plugins search` reads) for each recommendation.
+
+    A strong hit earns an install command and a link to the plugin. A possible hit is shown as a
+    lead with its link, never as an install line. No hit is stated plainly — that is the case where
+    the contribution prompt is the right next step, not a fabricated suggestion.
+    """
+    market = _marketplace()
+    market._CORE = _CORE
     for rec in recs:
-        matches, related = match_catalog(rec, entries, installed)
-        rec["catalog_matches"] = matches
-        rec["related"] = related
-        fresh = [m for m in matches if not m["installed"]]
-        if fresh:
-            rec["fix"] = {"kind": "install", "command": f"hermes plugins install {fresh[0]['id']}",
-                          "plugin": fresh[0]["id"]}
-        elif matches:
-            rec["fix"] = {"kind": "installed", "command": None, "plugin": matches[0]["id"]}
-        elif related:
-            names = ", ".join(f"{r['id']} ({r['matched_on']})" for r in related)
-            rec["fix"] = {"kind": "related", "command": None,
-                          "note": f"no direct match; closest: {names}"}
+        found = market.search_for_recommendation(rec)
+        rec["marketplace"] = found
+        best = found["best"]
+        if best and best["strength"] == "strong":
+            rec["fix"] = {"kind": "install" if not best["installed"] else "installed",
+                          "command": best["install"] if not best["installed"] else None,
+                          "plugin": best["name"], "url": best["url"],
+                          "note": f"strong match on marketplace: {best['name']}"}
+        elif best:
+            rec["fix"] = {"kind": "possible", "command": None, "plugin": best["name"],
+                          "url": best["url"],
+                          "note": f"closest plugin: {best['name']} — weak match, check it before installing"}
         else:
-            rec["fix"] = {"kind": "none",
-                          "note": "no catalog plugin covers this — candidate for a contribution"}
+            rec["fix"] = {"kind": "none", "command": None, "url": None,
+                          "note": "no catalog plugin covers this — a candidate contribution"}
     return recs
 
 

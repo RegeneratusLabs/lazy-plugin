@@ -131,6 +131,30 @@ def test_markers_report_line_numbers(contrib):
     assert hits and hits[0]["line"] == 2
 
 
+def test_submit_writes_a_portable_package_and_catalog_entry(contrib):
+    out = contrib.submit("general", days=365)
+    assert out["ok"] is True
+    bundle = Path(out["dir"])
+    assert (bundle / "plugin.json").exists()
+    assert (bundle / "skills" / bundle.name / "SKILL.md").exists()
+    entry = bundle / "plugin-catalog" / f"{bundle.name}.yaml"
+    assert entry.exists()
+    body = entry.read_text()
+    assert '"sha"' in body and "<full 40-character commit sha>" in body
+    assert '"capabilities"' in body
+    assert "SUBMISSION.md" in out["files"]
+    assert len(out["steps"]) == 5
+    submission = (bundle / "SUBMISSION.md").read_text()
+    assert "NousResearch/hermes-agent" in submission
+    assert "hermes plugins validate" in submission
+
+
+def test_submit_refuses_a_private_skill(contrib):
+    out = contrib.submit("personalised", days=365)
+    assert out["ok"] is False
+    assert "private" in out["error"]
+
+
 def test_missing_skill_name_fails_cleanly(contrib):
     out = contrib.package("does-not-exist", days=365)
     assert out["ok"] is False and "no agent-written skill" in out["error"]

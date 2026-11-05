@@ -9,6 +9,25 @@ import { useEffect, useState } from 'react'
 import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'pluginscout'
+const PAGE_ENV = { os: null }
+
+function openExternal(url) {
+  if (!url) return
+  if (PAGE_ENV.os && typeof PAGE_ENV.os.openExternal === 'function') {
+    PAGE_ENV.os.openExternal(url)
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function Link({ href, children }) {
+  return jsx('button', {
+    onClick: () => openExternal(href),
+    style: { color: 'var(--ui-accent)', background: 'none', border: 'none', padding: 0, cursor: 'pointer' },
+    className: 'text-[0.66rem] hover:underline',
+    children
+  })
+}
 const ROUTE = '/pluginscout'
 
 // ---------- data
@@ -57,7 +76,9 @@ function makeApi(ctx) {
     cached: days => rest(`/recommend?days=${days}`),
     contributions: days => rest(`/contributions?days=${days}`),
     packageSkill: (name, days) =>
-      rest('/contributions/package', { method: 'POST', body: JSON.stringify({ name, days }) })
+      rest('/contributions/package', { method: 'POST', body: JSON.stringify({ name, days }) }),
+    submitSkill: (name, days) =>
+      rest('/contributions/submit', { method: 'POST', body: JSON.stringify({ name, days }) })
   }
 }
 
@@ -82,14 +103,18 @@ function Evidence({ item }) {
 
 function RecCard({ rec }) {
   const fix = rec.fix || {}
+  const market = rec.marketplace || {}
   const fixLine =
     fix.kind === 'install'
       ? `hermes plugins install ${fix.plugin}`
       : fix.kind === 'installed'
         ? `${fix.plugin} is already installed`
-        : fix.kind === 'related'
-          ? fix.note
-          : 'no catalog plugin covers this — candidate for a contribution'
+        : fix.kind === 'possible'
+          ? (fix.note || `closest: ${fix.plugin} — weak match`)
+          : 'no catalog plugin covers this'
+  const detail = market.best
+    ? `${Math.round((market.best.score || 0) * 100)}% ${market.best.strength} · matched ${market.best.why}`
+    : `searched "${market.query || ''}" — nothing in the catalog`
   return jsxs('div', {
     className: 'rounded border p-3',
     style: { borderColor: 'var(--ui-stroke-tertiary)' },
@@ -111,10 +136,21 @@ function RecCard({ rec }) {
         ? jsx('div', { className: 'mt-1 text-[0.70rem] text-(--ui-text-tertiary)', children: rec.why_plugin })
         : null,
       jsx('div', { className: 'mt-2', children: (rec.evidence || []).map((e, i) => jsx(Evidence, { item: e }, i)) }),
+      jsxs('div', {
+        className: 'mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1',
+        children: [
+          jsx('span', {
+            className: 'font-mono text-[0.68rem]',
+            style: { color: fix.kind === 'install' ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
+            children: fixLine
+          }),
+          fix.url ? jsx(Link, { href: fix.url, children: 'open plugin ↗' }) : null,
+          !fix.url ? jsx(Link, { href: market.browse_url, children: 'browse the marketplace ↗' }) : null
+        ]
+      }),
       jsx('div', {
-        className: 'mt-2 font-mono text-[0.68rem]',
-        style: { color: fix.kind === 'install' ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-        children: fixLine
+        className: 'mt-1 truncate text-[0.6rem] text-(--ui-text-quaternary)',
+        children: detail
       })
     ]
   })
@@ -292,6 +328,15 @@ function ContributionCard({ item, days }) {
       .finally(() => setBusy(false))
   }
 
+  function submit() {
+    setBusy(true)
+    ContributionsPanel.__api
+      .submitSkill(item.name, days)
+      .then(out => setStaged(out))
+      .catch(err => setStaged({ ok: false, error: String(err && err.message ? err.message : err) }))
+      .finally(() => setBusy(false))
+  }
+
   const canStage = item.verdict === 'publish' || item.verdict === 'scrub'
   const markers = (item.markers || []).slice(0, 3)
     .map(m => `${m.kind}:${m.line} ${m.text}`)
@@ -329,8 +374,21 @@ function ContributionCard({ item, days }) {
         : null,
       canStage
         ? jsxs('div', {
-            className: 'mt-2 flex items-center gap-2',
+            className: 'mt-2 flex flex-wrap items-center gap-2',
             children: [
+              jsx('button', {
+                onClick: submit,
+                disabled: busy,
+                className: 'shrink-0 rounded px-2.5 py-1 text-[0.66rem] font-medium',
+                style: {
+                  background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
+                  color: 'var(--ui-text-primary)',
+                  whiteSpace: 'nowrap',
+                  cursor: busy ? 'default' : 'pointer'
+                },
+                children: busy ? 'Preparing…' : 'Prepare submission'
+              }),
               jsx('button', {
                 onClick: stage,
                 disabled: busy,
@@ -341,13 +399,32 @@ function ContributionCard({ item, days }) {
                   whiteSpace: 'nowrap',
                   cursor: busy ? 'default' : 'pointer'
                 },
-                children: busy ? 'Staging…' : 'Stage for submission'
+                children: 'Scrubbed copy only'
+              })
+            ]
+          })
+        : null,
+      staged
+        ? jsxs('div', {
+            className: 'mt-2 rounded p-2',
+            style: { background: 'var(--ui-bg-tertiary)' },
+            children: [
+              jsx('div', {
+                className: 'truncate font-mono text-[0.62rem]',
+                style: { color: staged.ok ? 'var(--ui-text-secondary)' : 'var(--ui-text-quaternary)' },
+                children: staged.ok ? staged.dir : (staged.error || 'failed')
               }),
-              staged
-                ? jsx('span', {
-                    className: 'truncate font-mono text-[0.62rem]',
-                    style: { color: staged.ok ? 'var(--ui-text-tertiary)' : 'var(--ui-text-quaternary)' },
-                    children: staged.ok ? staged.dir : (staged.error || 'failed')
+              staged.ok && staged.files
+                ? jsx('div', {
+                    className: 'mt-1 font-mono text-[0.6rem] text-(--ui-text-quaternary)',
+                    children: staged.files.join('  ·  ')
+                  })
+                : null,
+              (staged.steps || []).length
+                ? jsx('div', {
+                    className: 'mt-1.5 flex flex-col gap-0.5',
+                    children: staged.steps.map((s, i) =>
+                      jsx('div', { className: 'font-mono text-[0.6rem] text-(--ui-text-tertiary)', children: `${i + 1}. ${s}` }, i))
                   })
                 : null
             ]
@@ -476,6 +553,7 @@ export default {
   id: ID,
   name: 'Scout',
   register(ctx) {
+    PAGE_ENV.os = (ctx && ctx.os) || null
     const api = makeApi(ctx)
     ScoutPage.__api = api
     ScoutChip.__api = api

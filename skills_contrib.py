@@ -240,6 +240,110 @@ generalised for sharing. MIT — keep the attribution if you fork it.
             "redactions": count, "contribute_as": row["contribute_as"]}
 
 
+CATALOG_REPO = "https://github.com/NousResearch/hermes-agent"
+CATALOG_DIR_IN_REPO = "plugin-catalog"
+
+
+def submit(name: str, days: int = DEFAULT_DAYS) -> dict:
+    """Stage the real submission shape: a portable Agent Plugin (plugin.json + skills/) plus the
+    exact catalog entry the repo's PR expects, plus the steps. Nothing is pushed from here — no
+    credentials are touched, and the PR is the human-merged gate by design.
+    """
+    pkg = package(name, days)
+    if not pkg.get("ok"):
+        return pkg
+    outdir = Path(pkg["dir"])
+    slug = outdir.name
+    row = next((c for c in candidates(days=days, limit=50)["candidates"] if c["name"] == name), {})
+    description = (row.get("description") or "").strip() or name
+
+    # Portable Agent Plugin: the only shape the catalog accepts that can carry a skill.
+    skills_dir = outdir / "skills" / slug
+    skills_dir.mkdir(parents=True, exist_ok=True)
+    (skills_dir / "SKILL.md").write_text((outdir / "SKILL.md").read_text(encoding="utf-8"),
+                                         encoding="utf-8")
+    (outdir / "plugin.json").write_text(json.dumps({
+        "name": slug,
+        "version": "0.1.0",
+        "description": description,
+        "author": "Josh Thomson",
+        "license": "MIT",
+        "skills": [slug],
+    }, indent=1), encoding="utf-8")
+
+    catalog_entry = {
+        "name": slug,
+        "repo": "https://github.com/<you>/<repo>",
+        "sha": "<full 40-character commit sha>",
+        "version": "0.1.0",
+        "title": name.replace("-", " ").title(),
+        "description": description,
+        "maintainer": "<your-github-handle>",
+        "tier": "community",
+        "category": "tools",
+        "docs_url": "https://github.com/<you>/<repo>#readme",
+        "capabilities": {"provides_tools": [], "provides_hooks": [],
+                         "provides_middleware": [], "requires_env": []},
+        "requires_hermes": ">=0.21.6",
+    }
+    entry_dir = outdir / CATALOG_DIR_IN_REPO
+    entry_dir.mkdir(parents=True, exist_ok=True)
+    # JSON is valid YAML: no dependency, and the loader accepts it.
+    (entry_dir / f"{slug}.yaml").write_text(json.dumps(catalog_entry, indent=2) + "\n",
+                                            encoding="utf-8")
+
+    steps = [
+        f"cd {outdir} && git init -q && git add -A && git commit -qm 'Add {slug} skill'",
+        "create a PUBLIC GitHub repo and push it (owner or major contributor, per rule 5)",
+        "git rev-parse HEAD   # paste the full 40-char sha into "
+        f"{CATALOG_DIR_IN_REPO}/{slug}.yaml, and the real repo/docs URLs",
+        "hermes plugins validate . --install-deps   # the same gate catalog CI runs",
+        f"fork {CATALOG_REPO}, add {CATALOG_DIR_IN_REPO}/{slug}.yaml, open a PR",
+    ]
+    (outdir / "SUBMISSION.md").write_text(
+        f"""# Submitting `{name}`
+
+The catalog is human-merged: presence is the trust signal, so the entry must pin an exact commit
+and declare only capabilities the plugin really registers.
+
+## 1. Publish the package
+
+```bash
+{steps[0]}
+{steps[1]}
+```
+
+## 2. Pin it
+
+```bash
+{steps[2]}
+```
+
+## 3. Validate locally
+
+```bash
+hermes plugins validate /path/to/{slug} --install-deps
+```
+
+## 4. Open the PR
+
+- Fork {CATALOG_REPO}
+- Add `{CATALOG_DIR_IN_REPO}/{slug}.yaml` (already generated in `{CATALOG_DIR_IN_REPO}/`)
+- Open the PR and answer the reviewer's questions about what the plugin registers
+
+Rules that will get it bounced: a branch or short SHA instead of a full commit, self-updating code,
+capabilities that do not match reality, or a drive-by submission of someone else's repo.
+
+Full guidelines: {CATALOG_REPO}/blob/main/plugin-catalog/README.md
+""", encoding="utf-8")
+
+    return {"ok": True, "name": name, "dir": str(outdir),
+            "files": ["plugin.json", f"skills/{slug}/SKILL.md", f"{CATALOG_DIR_IN_REPO}/{slug}.yaml",
+                      "SUBMISSION.md", "README.md", "CONTRIBUTION.json"],
+            "steps": steps, "catalog_entry": str(entry_dir / f"{slug}.yaml"),
+            "redactions": pkg.get("redactions", 0)}
+
+
 def run(days: int = DEFAULT_DAYS, limit: int = MAX_CANDIDATES) -> dict:
     """Everything the panel needs. Never raises."""
     try:

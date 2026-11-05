@@ -121,6 +121,10 @@ CONTRIBUTIONS = {
             "package_name": {"type": "string",
                              "description": "Stage this skill as a submission bundle instead of just "
                                             "screening. Refuses anything scored private."},
+            "mode": {"type": "string", "enum": ["package", "submit"],
+                     "description": "With package_name: package (scrubbed copy only) or submit (also "
+                                    "writes plugin.json, the plugin-catalog YAML entry and "
+                                    "SUBMISSION.md with the PR steps). Default package."},
         },
         "required": [],
     },

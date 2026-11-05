@@ -152,6 +152,8 @@ def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
         contrib._CORE = core
         name = str(params.get("package_name") or "").strip()
         if name:
+            if str(params.get("mode") or "") == "submit":
+                return json.dumps(contrib.submit(name, days=days))
             return json.dumps(contrib.package(name, days=days))
         return json.dumps(contrib.run(days=days, limit=limit))
     except Exception as exc:

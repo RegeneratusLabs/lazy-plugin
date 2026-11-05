@@ -101,6 +101,21 @@ async def contributions_package(payload: dict | None = None):
     return await asyncio.to_thread(mod.package, name, days)
 
 
+@router.post("/contributions/submit")
+async def contributions_submit(payload: dict | None = None):
+    """Stage the portable package + catalog entry + PR steps. Nothing is pushed."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "name is required"}, status_code=400)
+    try:
+        days = max(1, min(3650, int(payload.get("days") or 60)))
+    except (TypeError, ValueError):
+        days = 60
+    mod = _contrib_mod()
+    return await asyncio.to_thread(mod.submit, name, days)
+
+
 @router.get("/health")
 async def health(probe: int = 0):
     ctx, meta = _find_ctx()

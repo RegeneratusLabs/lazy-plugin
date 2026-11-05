@@ -185,54 +185,53 @@ def test_ground_marks_recurring_across_two_sessions(rec, digest):
 
 # ---- catalog join
 
-def test_enrich_gives_an_install_command_or_says_none(rec, catalog):
-    recs = [{"title": "a", "search_terms": ["ethics"], "catalog_matches": None},
-            {"title": "b", "search_terms": ["no-such-plugin-anywhere"], "catalog_matches": None}]
-    out = rec.enrich(recs)
-    assert out[0]["fix"]["kind"] in ("install", "installed")
-    assert out[0]["catalog_matches"], "fixture catalog has an ethics entry"
-    assert out[1]["fix"]["kind"] == "none"
-    assert "candidate" in out[1]["fix"]["note"]
+def test_enrich_uses_the_marketplace_and_carries_a_link(rec, monkeypatch):
+    class Market:
+        _CORE = None
+
+        @staticmethod
+        def search_for_recommendation(_r, limit=3):
+            return {"query": "marketplace watch", "strength": "strong", "browse_url": "https://x/browse",
+                    "best": {"name": "market-watch", "score": 0.7, "strength": "strong",
+                             "url": "https://github.com/a/market-watch", "install": "hermes plugins install market-watch",
+                             "installed": False, "why": "market→name"}}
+
+    monkeypatch.setattr(rec, "_marketplace", lambda: Market)
+    out = rec.enrich([{"title": "marketplace watch", "search_terms": ["market"]}])
+    fix = out[0]["fix"]
+    assert fix["kind"] == "install"
+    assert fix["command"] == "hermes plugins install market-watch"
+    assert fix["url"] == "https://github.com/a/market-watch"
+    assert out[0]["marketplace"]["strength"] == "strong"
 
 
-def test_related_is_labelled_not_an_install(rec):
-    # Terms that appear only in the description, twice, and nowhere in the id: a weak match.
-    entries = [{"id": "agentmemory", "name": "AgentMemory", "category": "storage",
-                "description": "Daemon supervisor wiring a daemon into recall",
-                "capabilities": {"provides_tools": []}}]
-    matches, related = rec.match_catalog({"search_terms": ["daemon", "supervisor"]}, entries, set())
-    assert not matches
-    assert related and related[0]["matched_on"] == "description"
-    rec._catalog_index = lambda: (entries, set())
-    out = rec.enrich([{"title": "r", "search_terms": ["daemon", "supervisor"]}])
-    assert out[0]["fix"]["kind"] == "related"
-    assert "closest: agentmemory" in out[0]["fix"]["note"]
+def test_enrich_marks_a_weak_match_as_possible_not_install(rec, monkeypatch):
+    class Market:
+        @staticmethod
+        def search_for_recommendation(_r, limit=3):
+            return {"query": "q", "strength": "possible", "browse_url": "https://x/browse",
+                    "best": {"name": "nearby", "score": 0.42, "strength": "possible",
+                             "url": "https://github.com/a/nearby", "install": "hermes plugins install nearby",
+                             "installed": False, "why": "x→description"}}
+
+    monkeypatch.setattr(rec, "_marketplace", lambda: Market)
+    out = rec.enrich([{"title": "gateway supervisor", "search_terms": ["gateway"]}])
+    assert out[0]["fix"]["kind"] == "possible"
+    assert out[0]["fix"]["command"] is None
+    assert "weak match" in out[0]["fix"]["note"]
 
 
-def test_tool_and_category_hits_are_related_not_install(rec):
-    """A tool name is a lead, not proof: only an id/name hit may print an install command."""
-    entries = [{"id": "artifact-relay", "name": "artifact-relay", "category": "tools",
-                "description": "", "capabilities": {"provides_tools": ["publish"]}}]
-    rec._catalog_index = lambda: (entries, set())
-    out = rec.enrich([{"title": "r", "search_terms": ["publish"]}])
-    assert out[0]["fix"]["kind"] == "related"
-    assert "artifact-relay (tools)" in out[0]["fix"]["note"]
+def test_enrich_says_nothing_when_the_catalog_has_nothing(rec, monkeypatch):
+    class Market:
+        @staticmethod
+        def search_for_recommendation(_r, limit=3):
+            return {"query": "q", "strength": "none", "best": None, "hits": [],
+                    "browse_url": "https://x/browse", "cli_search": 'hermes plugins search "q"'}
 
-    by_category = [{"id": "vault-cache", "name": "VaultCache", "category": "memory",
-                    "description": "", "capabilities": {"provides_tools": []}}]
-    rec._catalog_index = lambda: (by_category, set())
-    out = rec.enrich([{"title": "r", "search_terms": ["memory"]}])
-    assert out[0]["fix"]["kind"] == "related"
-    assert "vault-cache (category)" in out[0]["fix"]["note"]
-
-
-def test_id_hit_still_earns_an_install(rec):
-    entries = [{"id": "marketplace-watch", "name": "marketplace-watch", "category": "tools",
-                "description": "", "capabilities": {"provides_tools": []}}]
-    rec._catalog_index = lambda: (entries, set())
-    out = rec.enrich([{"title": "r", "search_terms": ["marketplace"]}])
-    assert out[0]["fix"]["kind"] == "install"
-    assert out[0]["fix"]["command"] == "hermes plugins install marketplace-watch"
+    monkeypatch.setattr(rec, "_marketplace", lambda: Market)
+    out = rec.enrich([{"title": "nothing like it", "search_terms": ["zzz"]}])
+    assert out[0]["fix"]["kind"] == "none"
+    assert out[0]["fix"]["url"] is None
 
 
 # ---- run + cache

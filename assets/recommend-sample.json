@@ -39,8 +39,106 @@
    "catalog_matches": [],
    "related": [],
    "fix": {
-    "kind": "none",
-    "note": "no catalog plugin covers this — candidate for a contribution"
+    "kind": "possible",
+    "command": null,
+    "plugin": "morning-briefing",
+    "url": "https://github.com/drkpxl/morning-briefing#readme",
+    "note": "closest plugin: morning-briefing — weak match, check it before installing"
+   },
+   "marketplace": {
+    "query": "Daily Brief News Provider news provider daily briefing finance feed",
+    "best": {
+     "name": "morning-briefing",
+     "title": "morning-briefing",
+     "score": 0.45,
+     "strength": "possible",
+     "matched": [
+      {
+       "token": "daily",
+       "field": "description"
+      },
+      {
+       "token": "news",
+       "field": "description"
+      },
+      {
+       "token": "briefing",
+       "field": "name"
+      }
+     ],
+     "why": "daily→description, news→description, briefing→name",
+     "url": "https://github.com/drkpxl/morning-briefing#readme",
+     "install": "hermes plugins install morning-briefing",
+     "category": "automation",
+     "tier": "community",
+     "maintainer": "drkpxl",
+     "description": "Personal daily newspaper for Hermes: gathers weather, calendar, AQI, curated 36-hour news (timestamped Reddit RSS + X + web search, per-story QR codes), and newsletter digests, renders one 8.5x11 newsprint page, and prints it every morning via a cron job.",
+     "requires_env": [],
+     "installed": false
+    },
+    "hits": [
+     {
+      "name": "morning-briefing",
+      "title": "morning-briefing",
+      "score": 0.45,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "daily",
+        "field": "description"
+       },
+       {
+        "token": "news",
+        "field": "description"
+       },
+       {
+        "token": "briefing",
+        "field": "name"
+       }
+      ],
+      "why": "daily→description, news→description, briefing→name",
+      "url": "https://github.com/drkpxl/morning-briefing#readme",
+      "install": "hermes plugins install morning-briefing",
+      "category": "automation",
+      "tier": "community",
+      "maintainer": "drkpxl",
+      "description": "Personal daily newspaper for Hermes: gathers weather, calendar, AQI, curated 36-hour news (timestamped Reddit RSS + X + web search, per-story QR codes), and newsletter digests, renders one 8.5x11 newsprint page, and prints it every morning via a cron job.",
+      "requires_env": [],
+      "installed": false
+     },
+     {
+      "name": "hermes-osint-map",
+      "title": "Hermes OSINT Map",
+      "score": 0.42,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "brief",
+        "field": "description"
+       },
+       {
+        "token": "news",
+        "field": "description"
+       },
+       {
+        "token": "feed",
+        "field": "description"
+       }
+      ],
+      "why": "brief→description, news→description, feed→description",
+      "url": "https://github.com/Adolanium/hermes-osint-map#readme",
+      "install": "hermes plugins install hermes-osint-map",
+      "category": "desktop",
+      "tier": "community",
+      "maintainer": "Adolanium",
+      "description": "A live situational-awareness globe in Hermes Desktop: earthquakes (USGS), disaster alerts (GDACS), natural events (NASA EONET), US severe weather (NWS), military and nearby aircraft (adsb.lol), satellites propagated live from CelesTrak elements, GDELT news incidents, official tra",
+      "requires_env": [],
+      "installed": false
+     }
+    ],
+    "strength": "possible",
+    "browse_url": "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog",
+    "cli_search": "hermes plugins search \"Daily Brief News Provider news provider daily briefing finan\""
    }
   },
   {
@@ -78,8 +176,145 @@
    "catalog_matches": [],
    "related": [],
    "fix": {
-    "kind": "none",
-    "note": "no catalog plugin covers this — candidate for a contribution"
+    "kind": "possible",
+    "command": null,
+    "plugin": "alans-way",
+    "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+    "note": "closest plugin: alans-way — weak match, check it before installing"
+   },
+   "marketplace": {
+    "query": "Gateway Service Supervisor gateway restart service supervisor web ui ports",
+    "best": {
+     "name": "alans-way",
+     "title": "Alan's Way Plugin",
+     "score": 0.59,
+     "strength": "possible",
+     "matched": [
+      {
+       "token": "gateway",
+       "field": "description"
+      },
+      {
+       "token": "restart",
+       "field": "description"
+      },
+      {
+       "token": "web",
+       "field": "description"
+      },
+      {
+       "token": "port",
+       "field": "description"
+      }
+     ],
+     "why": "gateway→description, restart→description, web→description, port→description",
+     "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+     "install": "hermes plugins install alans-way",
+     "category": "automation",
+     "tier": "community",
+     "maintainer": "capthvnsen",
+     "description": "Idle check-ins from the primary bot of a Hermes gateway on a Linux machine or a macOS guest VM: when the bound Telegram chat has been quiet for two hours, during 08:00-22:00 in the user's timezone, the bot checks in once (does one safe step and reports it, suggests one, or asks o",
+     "requires_env": [],
+     "installed": false
+    },
+    "hits": [
+     {
+      "name": "alans-way",
+      "title": "Alan's Way Plugin",
+      "score": 0.59,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "gateway",
+        "field": "description"
+       },
+       {
+        "token": "restart",
+        "field": "description"
+       },
+       {
+        "token": "web",
+        "field": "description"
+       },
+       {
+        "token": "port",
+        "field": "description"
+       }
+      ],
+      "why": "gateway→description, restart→description, web→description, port→description",
+      "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+      "install": "hermes plugins install alans-way",
+      "category": "automation",
+      "tier": "community",
+      "maintainer": "capthvnsen",
+      "description": "Idle check-ins from the primary bot of a Hermes gateway on a Linux machine or a macOS guest VM: when the bound Telegram chat has been quiet for two hours, during 08:00-22:00 in the user's timezone, the bot checks in once (does one safe step and reports it, suggests one, or asks o",
+      "requires_env": [],
+      "installed": false
+     },
+     {
+      "name": "browserless",
+      "title": "Browserless",
+      "score": 0.58,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "supervisor",
+        "field": "description"
+       },
+       {
+        "token": "web",
+        "field": "category"
+       },
+       {
+        "token": "port",
+        "field": "description"
+       }
+      ],
+      "why": "supervisor→description, web→category, port→description",
+      "url": "https://github.com/browserless/browserless-mcp/tree/600a5d689fa3f5bdcb5676ffc063b56d18e9bd7c/hermes",
+      "install": "hermes plugins install browserless",
+      "category": "web",
+      "tier": "community",
+      "maintainer": "browserless",
+      "description": "Run Hermes' built-in browser tools on Browserless cloud browsers: stealth mode, residential proxies, captcha solving and ad blocking, with no local Chrome. One Browserless browser per task; Hermes' agent-browser daemon and CDP supervisor share it through a local CDP multiplexer, ",
+      "requires_env": [
+       "BROWSERLESS_TOKEN"
+      ],
+      "installed": false
+     },
+     {
+      "name": "aichipmunk",
+      "title": "aichipmunk",
+      "score": 0.47,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "gateway",
+        "field": "description"
+       },
+       {
+        "token": "restart",
+        "field": "description"
+       },
+       {
+        "token": "port",
+        "field": "description"
+       }
+      ],
+      "why": "gateway→description, restart→description, port→description",
+      "url": "https://github.com/Pacific-Cloud-Solutions/hermes-plugins",
+      "install": "hermes plugins install aichipmunk",
+      "category": "platform",
+      "tier": "community",
+      "maintainer": "Pacific-Cloud-Solutions",
+      "description": "Pairs this machine's Hermes bots with the AI Chipmunk mobile app from inside Hermes Desktop — pick a bot, get the reachable host, profile and API key as a scannable code. Registers a `hermes aichipmunk` CLI command, a desktop page and a dashboard API; no tools or hooks. Disclosur",
+      "requires_env": [],
+      "installed": false
+     }
+    ],
+    "strength": "possible",
+    "browse_url": "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog",
+    "cli_search": "hermes plugins search \"Gateway Service Supervisor gateway restart service superviso\""
    }
   },
   {
@@ -143,9 +378,69 @@
     }
    ],
    "fix": {
-    "kind": "related",
+    "kind": "possible",
     "command": null,
-    "note": "no direct match; closest: artifact-relay (tools), artifacts (tools), hermes-jetstream (tools)"
+    "plugin": "monid",
+    "url": "https://github.com/monid-ai/hermes-plugin#readme",
+    "note": "closest plugin: monid — weak match, check it before installing"
+   },
+   "marketplace": {
+    "query": "Marketplace Plugin Registry Tool marketplace plugin registry plugin install publish",
+    "best": {
+     "name": "monid",
+     "title": "monid",
+     "score": 0.41,
+     "strength": "possible",
+     "matched": [
+      {
+       "token": "marketplace",
+       "field": "description"
+      },
+      {
+       "token": "install",
+       "field": "description"
+      }
+     ],
+     "why": "marketplace→description, install→description",
+     "url": "https://github.com/monid-ai/hermes-plugin#readme",
+     "install": "hermes plugins install monid",
+     "category": "tools",
+     "tier": "community",
+     "maintainer": "monid-ai",
+     "description": "Connect your agent to third-party tools and APIs (web search and scraping, people and company data, social media, media generation, email and phone) through one integration. The agent discovers, compares and runs tools at runtime, paid per call from one Monid balance. Disclosure ",
+     "requires_env": [],
+     "installed": false
+    },
+    "hits": [
+     {
+      "name": "monid",
+      "title": "monid",
+      "score": 0.41,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "marketplace",
+        "field": "description"
+       },
+       {
+        "token": "install",
+        "field": "description"
+       }
+      ],
+      "why": "marketplace→description, install→description",
+      "url": "https://github.com/monid-ai/hermes-plugin#readme",
+      "install": "hermes plugins install monid",
+      "category": "tools",
+      "tier": "community",
+      "maintainer": "monid-ai",
+      "description": "Connect your agent to third-party tools and APIs (web search and scraping, people and company data, social media, media generation, email and phone) through one integration. The agent discovers, compares and runs tools at runtime, paid per call from one Monid balance. Disclosure ",
+      "requires_env": [],
+      "installed": false
+     }
+    ],
+    "strength": "possible",
+    "browse_url": "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog",
+    "cli_search": "hermes plugins search \"Marketplace Plugin Registry Tool marketplace plugin registry\""
    }
   },
   {
@@ -177,8 +472,85 @@
    "catalog_matches": [],
    "related": [],
    "fix": {
-    "kind": "none",
-    "note": "no catalog plugin covers this — candidate for a contribution"
+    "kind": "possible",
+    "command": null,
+    "plugin": "alans-way",
+    "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+    "note": "closest plugin: alans-way — weak match, check it before installing"
+   },
+   "marketplace": {
+    "query": "GitHub Repo Sync Auditor repo audit github sync scheduled sweep",
+    "best": {
+     "name": "alans-way",
+     "title": "Alan's Way Plugin",
+     "score": 0.42,
+     "strength": "possible",
+     "matched": [
+      {
+       "token": "github",
+       "field": "description"
+      },
+      {
+       "token": "repo",
+       "field": "description"
+      },
+      {
+       "token": "audit",
+       "field": "description"
+      },
+      {
+       "token": "scheduled",
+       "field": "description"
+      }
+     ],
+     "why": "github→description, repo→description, audit→description, scheduled→description",
+     "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+     "install": "hermes plugins install alans-way",
+     "category": "automation",
+     "tier": "community",
+     "maintainer": "capthvnsen",
+     "description": "Idle check-ins from the primary bot of a Hermes gateway on a Linux machine or a macOS guest VM: when the bound Telegram chat has been quiet for two hours, during 08:00-22:00 in the user's timezone, the bot checks in once (does one safe step and reports it, suggests one, or asks o",
+     "requires_env": [],
+     "installed": false
+    },
+    "hits": [
+     {
+      "name": "alans-way",
+      "title": "Alan's Way Plugin",
+      "score": 0.42,
+      "strength": "possible",
+      "matched": [
+       {
+        "token": "github",
+        "field": "description"
+       },
+       {
+        "token": "repo",
+        "field": "description"
+       },
+       {
+        "token": "audit",
+        "field": "description"
+       },
+       {
+        "token": "scheduled",
+        "field": "description"
+       }
+      ],
+      "why": "github→description, repo→description, audit→description, scheduled→description",
+      "url": "https://github.com/capthvnsen/alans-way-agents/tree/0f65549ac1353f6b74b8ac6a22d58f3eb6dea0a3/alans-way",
+      "install": "hermes plugins install alans-way",
+      "category": "automation",
+      "tier": "community",
+      "maintainer": "capthvnsen",
+      "description": "Idle check-ins from the primary bot of a Hermes gateway on a Linux machine or a macOS guest VM: when the bound Telegram chat has been quiet for two hours, during 08:00-22:00 in the user's timezone, the bot checks in once (does one safe step and reports it, suggests one, or asks o",
+      "requires_env": [],
+      "installed": false
+     }
+    ],
+    "strength": "possible",
+    "browse_url": "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog",
+    "cli_search": "hermes plugins search \"GitHub Repo Sync Auditor repo audit github sync scheduled sw\""
    }
   }
  ],
