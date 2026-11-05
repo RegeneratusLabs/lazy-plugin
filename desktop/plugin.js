@@ -10,6 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
+const BUILD = 'cat-tiles-3'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -422,7 +423,13 @@ function CreatorPanel() {
           jsx(LazyCat, {}),
           jsxs('div', {
             children: [
-              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Make a plugin' }),
+              jsxs('div', {
+                className: 'flex items-baseline gap-1.5',
+                children: [
+                  jsx('span', { className: 'text-sm font-medium text-foreground', children: 'Make a plugin' }),
+                  jsx('span', { className: 'text-[0.55rem] text-(--ui-text-quaternary)', children: BUILD })
+                ]
+              }),
               jsx('div', {
                 className: 'mt-0.5 text-[0.7rem] text-(--ui-text-tertiary)',
                 children: 'Say what you want Hermes to do. Or start from a job you already run.'
@@ -581,9 +588,11 @@ function PluginTile({ plugin, onChanged }) {
             className: 'flex items-baseline gap-1.5',
             children: [
               jsx('span', { className: 'text-[0.84rem] font-medium text-foreground', children: plugin.title || plugin.name }),
-              plugin.validated
+              plugin.validated === true
                 ? jsx(Badge, { tone: 'good', children: 'checked' })
-                : jsx(Badge, { tone: 'warn', children: 'needs a fix' })
+                : plugin.validated === false
+                  ? jsx(Badge, { tone: 'warn', children: 'needs a fix' })
+                  : jsx(Badge, { tone: 'quiet', children: 'unchecked' })
             ]
           }),
           jsx('span', { className: 'font-mono text-[0.56rem] text-(--ui-text-quaternary)', children: plugin.version ? `v${plugin.version}` : '' })
@@ -609,13 +618,13 @@ function PluginTile({ plugin, onChanged }) {
         children: [
           jsx(TileButton, {
             onClick: install,
-            disabled: !!busy || plugin.installed || !plugin.validated,
-            primary: !plugin.installed && plugin.validated,
+            disabled: !!busy || plugin.installed || plugin.validated === false,
+            primary: !plugin.installed && plugin.validated !== false,
             children: busy === 'install' ? 'installing…' : plugin.installed ? 'installed' : 'install'
           }),
           jsx(TileButton, {
             onClick: publish,
-            disabled: !!busy || !plugin.validated,
+            disabled: !!busy || plugin.validated === false,
             children: busy === 'publish' ? 'publishing…' : plugin.published ? 'update pin' : 'publish'
           }),
           plugin.published
@@ -633,16 +642,28 @@ function PluginTile({ plugin, onChanged }) {
 function CreatedTiles({ version }) {
   const [rows, setRows] = useState([])
   const [tick, setTick] = useState(0)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let live = true
     CreatorPanel.__api
       .created()
-      .then(payload => { if (live) setRows((payload && payload.created) || []) })
-      .catch(() => {})
+      .then(payload => {
+        if (!live) return
+        setError('')
+        setRows((payload && payload.created) || [])
+      })
+      .catch(err => { if (live) setError(String(err && err.message ? err.message : err)) })
     return () => { live = false }
   }, [version, tick])
 
+  if (error) {
+    return jsx('div', {
+      className: 'rounded border p-3 text-[0.68rem]',
+      style: { borderColor: 'var(--ui-stroke-secondary)', color: 'var(--ui-text-tertiary)' },
+      children: `could not list what you have built: ${error}`
+    })
+  }
   if (!rows.length) return null
   return jsxs('div', {
     className: 'flex flex-col gap-2',

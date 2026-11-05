@@ -166,14 +166,21 @@ def _created() -> dict:
         for child in sorted(root.iterdir()):
             if not (child / "plugin.yaml").exists():
                 continue
-            manifest = creator.read_manifest(child)
             name = child.name
+            try:
+                manifest = creator.read_manifest(child)
+            except Exception:
+                manifest = {}
             modified = max((f.stat().st_mtime for f in child.rglob("*") if f.is_file()), default=0)
             check = cache.get(name)
             if not check or check.get("mtime") != modified:
-                result = creator.validate_plugin(child)
-                check = {"mtime": modified, "ok": bool(result.get("ok")),
-                         "tail": [line for line in (result.get("tail") or []) if line.strip()][-3:]}
+                try:
+                    result = creator.validate_plugin(child) or {}
+                    check = {"mtime": modified, "ok": bool(result.get("ok")),
+                             "tail": [line for line in (result.get("tail") or []) if line.strip()][-3:]}
+                except Exception as exc:
+                    # the tile still renders; install and publish re-validate anyway
+                    check = {"mtime": modified, "ok": None, "tail": [f"check unavailable: {type(exc).__name__}"]}
                 cache[name] = check
             published = None
             entry_path = child / "plugin-catalog" / f"{name}.yaml"
@@ -193,7 +200,7 @@ def _created() -> dict:
                 "dir": str(child),
                 "installed": (core.hermes_home() / "plugins" / name).exists(),
                 "published": published,
-                "validated": bool(check.get("ok")),
+                "validated": check.get("ok"),
                 "validation": check.get("tail") or [],
                 "files": len([p for p in child.rglob("*")
                               if p.is_file() and ".git" not in p.parts and "__pycache__" not in p.parts]),

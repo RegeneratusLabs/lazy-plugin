@@ -104,6 +104,25 @@ def test_create_returns_a_job_and_reports_progress(api, monkeypatch):
     assert ("skill", "chinese-marketplace-sourcing") in seen
 
 
+def test_job_thread_inherits_contextvars(api):
+    """The bug: a bare thread starts empty, so the profile scope is lost and secrets refuse."""
+    import contextvars
+    import time
+
+    probe = contextvars.ContextVar("probe", default="missing")
+    seen = {}
+    token = probe.set("inherited")
+    try:
+        api._start_job_thread(lambda: seen.update(value=probe.get()))
+        for _ in range(100):
+            if seen:
+                break
+            time.sleep(0.01)
+    finally:
+        probe.reset(token)
+    assert seen.get("value") == "inherited"
+
+
 def test_create_job_rejects_an_unknown_id(api):
     import asyncio
     assert asyncio.run(api.create_job("nope"))["stage"] == "gone"
