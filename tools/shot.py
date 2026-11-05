@@ -1,4 +1,4 @@
-"""Render a faithful standalone copy of the Scout page from the real report payload, then screenshot."""
+"""Render a faithful standalone copy of the 🐱 Lazy Cat page from the real report payload, then screenshot."""
 import html
 import importlib.util
 import json
@@ -79,7 +79,7 @@ gap_rows = "\n".join(
       <span class="badge">{ {"statedb":"state.db","backfill":"transcripts","live":"live"}.get(g["source"], g["source"]) }</span>
     </div>''' for i, g in enumerate(gaps[:10]))
 
-DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
+DOC = f"""<!doctype html><meta charset="utf-8"><title>🐱 Lazy Cat</title>
 <style>
   :root {{
     --bg: #17181c; --bg2: #1e1f25; --bg3: #2a2c33;
@@ -133,7 +133,7 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
     <div class="item"><span class="dot"></span>Chat</div>
     <div class="item"><span class="dot"></span>Sessions</div>
     <div class="item"><span class="dot"></span>Skills</div>
-    <div class="item on"><span class="dot"></span>Scout</div>
+    <div class="item on"><span class="dot"></span>🐱 Lazy Cat</div>
     <div class="item"><span class="dot"></span>Cron</div>
   </div>
   <div class="main">

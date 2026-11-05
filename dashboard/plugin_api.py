@@ -13,6 +13,7 @@ import time
 import uuid
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -155,24 +156,67 @@ async def created():
 
 
 def _created() -> dict:
+    """One row per generated plugin, with everything a tile needs — no second request."""
     core = _core()
     root = core.state_dir() / "created"
+    creator = _creator_mod()
+    cache = _validation_cache(core)
     rows = []
     if root.is_dir():
         for child in sorted(root.iterdir()):
             if not (child / "plugin.yaml").exists():
                 continue
-            spec = {}
-            try:
-                spec_file = child / "__init__.py"
-                for line in spec_file.read_text(encoding="utf-8", errors="replace").splitlines()[:12]:
-                    if line.startswith("PLUGIN = "):
-                        continue
-                spec = {"files": sorted(p.name for p in child.rglob("*") if p.is_file())}
-            except Exception:
-                pass
-            rows.append({"name": child.name, "dir": str(child), **spec})
+            manifest = creator.read_manifest(child)
+            name = child.name
+            modified = max((f.stat().st_mtime for f in child.rglob("*") if f.is_file()), default=0)
+            check = cache.get(name)
+            if not check or check.get("mtime") != modified:
+                result = creator.validate_plugin(child)
+                check = {"mtime": modified, "ok": bool(result.get("ok")),
+                         "tail": [line for line in (result.get("tail") or []) if line.strip()][-3:]}
+                cache[name] = check
+            published = None
+            entry_path = child / "plugin-catalog" / f"{name}.yaml"
+            if entry_path.exists():
+                text = entry_path.read_text(encoding="utf-8", errors="replace")
+                repo = re.search(r"^repo:\s*(\S+)", text, re.M)
+                sha = re.search(r"^sha:\s*(\S+)", text, re.M)
+                if repo:
+                    published = {"repo": repo.group(1), "sha": sha.group(1) if sha else ""}
+            rows.append({
+                "name": name,
+                "title": str(manifest.get("title") or name.replace("-", " ").replace("_", " ").title()),
+                "description": " ".join(str(manifest.get("description") or "").split()),
+                "version": str(manifest.get("version") or ""),
+                "tools": list(manifest.get("provides_tools") or []),
+                "hooks": list(manifest.get("provides_hooks") or []),
+                "dir": str(child),
+                "installed": (core.hermes_home() / "plugins" / name).exists(),
+                "published": published,
+                "validated": bool(check.get("ok")),
+                "validation": check.get("tail") or [],
+                "files": len([p for p in child.rglob("*")
+                              if p.is_file() and ".git" not in p.parts and "__pycache__" not in p.parts]),
+            })
+    _write_validation_cache(core, cache)
     return {"ok": True, "created": rows, "outbox": str(root)}
+
+
+def _validation_cache(core) -> dict:
+    path = core.state_dir() / "validation.json"
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _write_validation_cache(core, cache: dict) -> None:
+    path = core.state_dir() / "validation.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 
 @router.post("/created/install")
@@ -214,13 +258,15 @@ async def publish_created(payload: dict | None = None):
     job = uuid.uuid4().hex[:12]
     JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
                  "steps": [], "started": time.time()}
-    threading.Thread(target=_run_publish, args=(job, bundle, name, owner, open_pr),
-                     daemon=True).start()
+    _start_job_thread(_run_publish, job, bundle, name, owner, open_pr)
     return {"ok": True, "job": job, "stage": "starting"}
 
 
 def _run_publish(job: str, bundle, name: str, owner: str, open_pr: bool) -> None:
-    entry = JOBS[job]
+    _scope_mod().run_in_scope(_publish_worker, JOBS[job], bundle, name, owner, open_pr)
+
+
+def _publish_worker(entry: dict, bundle, name: str, owner: str, open_pr: bool) -> None:
     try:
         publish = _publish_mod()
         entry["stage"] = "checking the package"
@@ -328,6 +374,9 @@ no self-updating code, owner-or-major-contributor submission.
             "files": [f"plugin-catalog/{name}.yaml", "SUBMISSION.md"] + ([f"{name}.tar.gz"] if tarball else [])}
 
 
+_KEY_UNREADABLE = ("this process cannot read the provider API key — restart the gateway "
+                   "(`hermes gateway " + "restart`) and try again")
+
 JOBS: dict[str, dict] = {}
 
 
@@ -347,12 +396,31 @@ async def create_plugin(payload: dict | None = None):
     job = uuid.uuid4().hex[:12]
     JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
                  "started": time.time()}
-    threading.Thread(target=_run_create, args=(job, idea, kind, source), daemon=True).start()
+    _start_job_thread(_run_create, job, idea, kind, source)
     return {"ok": True, "job": job, "stage": "starting"}
 
 
+def _start_job_thread(target, *args) -> None:
+    """A thread that keeps this request's contextvars, so the profile scope rides along."""
+    import contextvars
+
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(target, *args), daemon=True).start()
+
+
+def _scope_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_scope_api", _PLUGIN_DIR / "scope.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
 def _run_create(job: str, idea: str, kind: str, source: str) -> None:
-    entry = JOBS[job]
+    # a bare thread starts with empty contextvars, and this process serves several profiles
+    _scope_mod().run_in_scope(_create_worker, JOBS[job], idea, kind, source)
+
+
+def _create_worker(entry: dict, idea: str, kind: str, source: str) -> None:
     try:
         entry["stage"] = "reading what you picked"
         context = _source_context(kind, source)
@@ -360,6 +428,9 @@ def _run_create(job: str, idea: str, kind: str, source: str) -> None:
         llm = getattr(ctx, "llm", None) if ctx is not None else None
         creator = _creator_mod()
         entry["stage"] = "asking the model for a spec"
+        if _scope_mod().secret_probe("OPENCODE_GO_API_KEY") is False:
+            entry.update(ok=False, stage="failed", error=_KEY_UNREADABLE)
+            return
         drafted = creator.draft_spec(idea, llm, context)
         if not drafted.get("ok"):
             drafted["ctx"] = meta

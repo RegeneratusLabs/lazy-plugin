@@ -503,8 +503,137 @@ function CreatorPanel() {
 CreatorPanel.__api = null
 CreatorPanel.__onBuilt = null
 
-function BuiltSoFar({ version }) {
+function Badge({ tone = 'quiet', children }) {
+  const styles = {
+    good: { color: 'var(--ui-accent)', border: '1px solid color-mix(in srgb, var(--ui-accent) 45%, transparent)' },
+    quiet: { color: 'var(--ui-text-quaternary)', border: '1px solid var(--ui-stroke-tertiary)' },
+    warn: { color: 'var(--ui-text-tertiary)', border: '1px solid var(--ui-stroke-secondary)' }
+  }
+  return jsx('span', {
+    className: 'rounded-full px-1.5 py-[1px] text-[0.56rem] uppercase tracking-wide',
+    style: { ...(styles[tone] || styles.quiet), whiteSpace: 'nowrap' },
+    children
+  })
+}
+
+function TileButton({ onClick, disabled, primary, children }) {
+  return jsx('button', {
+    onClick,
+    disabled,
+    className: 'rounded px-2 py-[3px] text-[0.63rem]',
+    style: {
+      whiteSpace: 'nowrap',
+      cursor: disabled ? 'default' : 'pointer',
+      opacity: disabled ? 0.5 : 1,
+      background: primary ? 'color-mix(in srgb, var(--ui-accent) 18%, transparent)' : 'transparent',
+      border: primary
+        ? '1px solid color-mix(in srgb, var(--ui-accent) 55%, transparent)'
+        : '1px solid var(--ui-stroke-secondary)',
+      color: primary ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'
+    },
+    children
+  })
+}
+
+function PluginTile({ plugin, onChanged }) {
+  const [busy, setBusy] = useState('')
+  const [note, setNote] = useState('')
+
+  function install() {
+    setBusy('install')
+    setNote('')
+    CreatorPanel.__api
+      .install(plugin.name)
+      .then(result => {
+        setNote(result && result.ok ? 'installed — enable it to load' : (result && result.error) || 'failed')
+        if (result && result.ok && onChanged) onChanged()
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+      .finally(() => setBusy(''))
+  }
+
+  function publish() {
+    setBusy('publish')
+    setNote('')
+    CreatorPanel.__api
+      .publish(plugin.name, false)
+      .then(start => {
+        if (!start || !start.job) throw new Error((start && start.error) || 'could not start publishing')
+        return pollJob(CreatorPanel.__api, start.job, stage => setNote(stage))
+      })
+      .then(state => {
+        const result = (state && state.result) || {}
+        setNote(state.ok ? `published at ${String(result.sha || '').slice(0, 7)} — the entry is beside it` : (state.error || 'failed'))
+        if (state.ok && onChanged) onChanged()
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+      .finally(() => setBusy(''))
+  }
+
+  return jsxs('div', {
+    className: 'flex flex-col gap-1.5 rounded border p-3',
+    style: { borderColor: 'var(--ui-stroke-secondary)' },
+    children: [
+      jsxs('div', {
+        className: 'flex items-baseline justify-between gap-2',
+        children: [
+          jsxs('div', {
+            className: 'flex items-baseline gap-1.5',
+            children: [
+              jsx('span', { className: 'text-[0.84rem] font-medium text-foreground', children: plugin.title || plugin.name }),
+              plugin.validated
+                ? jsx(Badge, { tone: 'good', children: 'checked' })
+                : jsx(Badge, { tone: 'warn', children: 'needs a fix' })
+            ]
+          }),
+          jsx('span', { className: 'font-mono text-[0.56rem] text-(--ui-text-quaternary)', children: plugin.version ? `v${plugin.version}` : '' })
+        ]
+      }),
+      jsx('div', {
+        className: 'text-[0.68rem] leading-[1.35] text-(--ui-text-tertiary)',
+        style: { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
+        children: plugin.description || 'no description'
+      }),
+      jsxs('div', {
+        className: 'flex flex-wrap items-center gap-1.5 text-[0.6rem] text-(--ui-text-quaternary)',
+        children: [
+          jsx('span', { children: `${(plugin.tools || []).length} tools` }),
+          jsx('span', { children: '·' }),
+          jsx('span', { children: `${plugin.files} files` }),
+          plugin.installed ? jsx(Badge, { tone: 'good', children: 'installed' }) : null,
+          plugin.published ? jsx(Badge, { tone: 'quiet', children: 'on github' }) : null
+        ]
+      }),
+      jsxs('div', {
+        className: 'mt-0.5 flex flex-wrap items-center gap-1.5',
+        children: [
+          jsx(TileButton, {
+            onClick: install,
+            disabled: !!busy || plugin.installed || !plugin.validated,
+            primary: !plugin.installed && plugin.validated,
+            children: busy === 'install' ? 'installing…' : plugin.installed ? 'installed' : 'install'
+          }),
+          jsx(TileButton, {
+            onClick: publish,
+            disabled: !!busy || !plugin.validated,
+            children: busy === 'publish' ? 'publishing…' : plugin.published ? 'update pin' : 'publish'
+          }),
+          plugin.published
+            ? jsx(ExtLink, { href: plugin.published.repo, children: 'repo ↗' })
+            : null,
+          note
+            ? jsx('span', { className: 'truncate text-[0.58rem] text-(--ui-text-quaternary)', children: note })
+            : null
+        ]
+      })
+    ]
+  })
+}
+
+function CreatedTiles({ version }) {
   const [rows, setRows] = useState([])
+  const [tick, setTick] = useState(0)
+
   useEffect(() => {
     let live = true
     CreatorPanel.__api
@@ -512,29 +641,21 @@ function BuiltSoFar({ version }) {
       .then(payload => { if (live) setRows((payload && payload.created) || []) })
       .catch(() => {})
     return () => { live = false }
-  }, [version])
+  }, [version, tick])
+
   if (!rows.length) return null
   return jsxs('div', {
-    className: 'rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-tertiary)' },
+    className: 'flex flex-col gap-2',
     children: [
       jsx('div', {
-        className: 'text-[0.7rem] font-medium text-foreground',
+        className: 'text-[0.72rem] font-medium text-foreground',
         children: `Built so far (${rows.length})`
       }),
       jsx('div', {
-        className: 'mt-1.5 flex flex-col gap-1',
+        className: 'grid gap-2',
+        style: { gridTemplateColumns: 'repeat(auto-fill, minmax(17rem, 1fr))' },
         children: rows.map(row =>
-          jsxs('div', {
-            className: 'flex items-baseline justify-between gap-3',
-            children: [
-              jsx('span', { className: 'font-mono text-[0.66rem] text-(--ui-text-secondary)', children: row.name }),
-              jsx('span', {
-                className: 'truncate font-mono text-[0.58rem] text-(--ui-text-quaternary)',
-                children: row.dir
-              })
-            ]
-          }, row.name))
+          jsx(PluginTile, { plugin: row, onChanged: () => setTick(value => value + 1) }, row.name))
       })
     ]
   })
@@ -545,7 +666,7 @@ function LazyPage() {
   CreatorPanel.__onBuilt = () => setVersion(value => value + 1)
   return jsxs('div', {
     className: 'flex flex-col gap-4 p-5',
-    children: [jsx(CreatorPanel, {}), jsx(BuiltSoFar, { version })]
+    children: [jsx(CreatorPanel, {}), jsx(CreatedTiles, { version })]
   })
 }
 
