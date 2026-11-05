@@ -495,6 +495,39 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
             "spec": clean, "problems": problems, "raw": raw[:800], "meta": meta}
 
 
+def read_manifest(bundle: Path) -> dict:
+    """plugin.yaml -> dict, with a list-aware fallback so it works without PyYAML."""
+    path = Path(bundle) / "plugin.yaml"
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        import yaml  # type: ignore
+        loaded = yaml.safe_load(text)
+        if isinstance(loaded, dict):
+            return loaded
+    except Exception:
+        pass
+    out, pending = {}, None
+    for line in text.splitlines():
+        item = re.match(r"^\s+-\s*(.+)$", line)
+        if item and pending:
+            out[pending].append(item.group(1).strip().strip("'\""))
+            continue
+        key = re.match(r"^([a-z_]+):\s*(.*)$", line)
+        if not key:
+            pending = None
+            continue
+        field, value = key.group(1), key.group(2).strip()
+        if value:
+            out[field] = value.strip("'\"")
+            pending = None
+        else:
+            out[field] = []
+            pending = field
+    return out
+
+
 def create(spec: dict, outbox: Optional[Path] = None) -> dict:
     """Render, write, validate. Writes only inside the plugin's own outbox."""
     clean, problems = validate_spec(spec)

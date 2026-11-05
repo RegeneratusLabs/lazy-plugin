@@ -7,6 +7,7 @@ chat and Desktop, so a synchronous catalog scan here would stall unrelated reque
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import importlib.util
 import json
 import sys
@@ -169,6 +170,124 @@ def _created() -> dict:
                 pass
             rows.append({"name": child.name, "dir": str(child), **spec})
     return {"ok": True, "created": rows, "outbox": str(root)}
+
+
+@router.post("/created/install")
+async def install_created(payload: dict | None = None):
+    """Link a generated plugin into the profile. Re-validates first; refuses to overwrite."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    return await asyncio.to_thread(_install_created, name)
+
+
+def _install_created(name: str) -> dict:
+    core = _core()
+    source = core.state_dir() / "created" / name
+    if not name or not (source / "plugin.yaml").exists():
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    creator = _creator_mod()
+    check = creator.validate_plugin(source)
+    if not check.get("ok"):
+        return {"ok": False, "error": "the package does not validate; fix it first",
+                "validation": check}
+    target = core.hermes_home() / "plugins" / name
+    if target.exists() or target.is_symlink():
+        return {"ok": False, "error": f"{target} already exists — remove it or pick another name"}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.symlink_to(source)
+    return {"ok": True, "installed": str(target), "source": str(source),
+            "validation": check,
+            "next": "restart the gateway or run `hermes plugins enable " + name + "`"}
+
+
+@router.post("/created/share")
+async def share_created(payload: dict | None = None):
+    """Write the marketplace entry, the PR steps and a tarball you can hand to anyone."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    return await asyncio.to_thread(_share_created, name)
+
+
+def _share_created(name: str) -> dict:
+    core = _core()
+    bundle = core.state_dir() / "created" / name
+    if not name or not (bundle / "plugin.yaml").exists():
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    manifest = _creator_mod().read_manifest(bundle)
+
+    entry = {
+        "name": name,
+        "repo": "https://github.com/<you>/<repo>",
+        "sha": "<full 40-character commit sha>",
+        "version": str(manifest.get("version") or "0.1.0"),
+        "title": name.replace("-", " ").title(),
+        "description": str(manifest.get("description") or "")[:400],
+        "maintainer": "<your-github-handle>",
+        "tier": "community",
+        "category": "tools",
+        "docs_url": "https://github.com/<you>/<repo>#readme",
+        "capabilities": {
+            "provides_tools": manifest.get("provides_tools") or [],
+            "provides_hooks": manifest.get("provides_hooks") or [],
+            "provides_middleware": [],
+            "requires_env": manifest.get("requires_env") or [],
+        },
+        "requires_hermes": ">=0.21.6",
+    }
+    catalog_dir = bundle / "plugin-catalog"
+    catalog_dir.mkdir(exist_ok=True)
+    entry_path = catalog_dir / f"{name}.yaml"
+    entry_path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
+
+    submission = bundle / "SUBMISSION.md"
+    submission.write_text(
+        f"""# Sharing `{name}`
+
+## 1. Publish the repo
+
+```bash
+cd {bundle}
+git init -q && git add -A && git commit -qm 'Add {name} plugin'
+# create a public repo you own, then:
+git remote add origin <your repo url> && git push -u origin main
+git rev-parse HEAD    # paste this full 40-character sha into plugin-catalog/{name}.yaml
+```
+
+## 2. Validate
+
+```bash
+hermes plugins validate {bundle} --install-deps
+```
+
+## 3. Submit to the catalog
+
+- Fork https://github.com/NousResearch/hermes-agent
+- Add `plugin-catalog/{name}.yaml` (generated beside this file)
+- Open the PR. Human-merged by design: presence in the catalog is the trust signal.
+
+## 4. Or just hand it to someone
+
+```bash
+tar -czf {name}.tar.gz -C {bundle} .
+```
+
+Rules reviewers will check: exact SHA pin, declared capabilities matching what it registers,
+no self-updating code, owner-or-major-contributor submission.
+""", encoding="utf-8")
+
+    tarball = None
+    try:
+        # outside the bundle, or tar warns about the archive changing while it reads it
+        tarball = str(bundle.parent / f"{name}.tar.gz")
+        subprocess.run(["tar", "-czf", tarball, "-C", str(bundle), "."],
+                       check=True, capture_output=True, timeout=120)
+    except Exception:
+        tarball = None
+
+    return {"ok": True, "name": name, "dir": str(bundle),
+            "catalog_entry": str(entry_path), "submission": str(submission),
+            "tarball": tarball,
+            "files": [f"plugin-catalog/{name}.yaml", "SUBMISSION.md"] + ([f"{name}.tar.gz"] if tarball else [])}
 
 
 @router.post("/create")

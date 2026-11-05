@@ -22,9 +22,13 @@ function makeApi(ctx) {
   const base = `/api/plugins/${ID}`
   const rest = async (path, options) => {
     if (ctx && ctx.rest) return ctx.rest(path, options)
+    const request = options || {}
     const response = await fetch(base + path, {
       headers: { 'content-type': 'application/json' },
-      ...(options || {})
+      ...request,
+      body: request.body && typeof request.body !== 'string'
+        ? JSON.stringify(request.body)
+        : request.body
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return response.json()
@@ -32,8 +36,28 @@ function makeApi(ctx) {
   return {
     sources: () => rest('/sources'),
     created: () => rest('/created'),
-    create: payload => rest('/create', { method: 'POST', body: JSON.stringify(payload) })
+    create: payload => rest('/create', { method: 'POST', body: payload }),
+    install: name => rest('/created/install', { method: 'POST', body: { name } }),
+    share: name => rest('/created/share', { method: 'POST', body: { name } })
   }
+}
+
+function LazyCat({ size = 30 }) {
+  return jsx('svg', {
+    width: size,
+    height: size,
+    viewBox: '0 0 32 32',
+    fill: 'none',
+    'aria-hidden': 'true',
+    children: [
+      jsx('path', { d: 'M4 26c0-6 4-10 12-10s12 4 12 10z', fill: 'color-mix(in srgb, var(--ui-accent) 22%, transparent)', stroke: 'var(--ui-accent)', strokeWidth: 1.2 }),
+      jsx('path', { d: 'M7 17 5 9l6 3M25 17l2-8-6 3', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinejoin: 'round' }),
+      jsx('circle', { cx: 12, cy: 18.5, r: 1.1, fill: 'var(--ui-accent)' }),
+      jsx('circle', { cx: 20, cy: 18.5, r: 1.1, fill: 'var(--ui-accent)' }),
+      jsx('path', { d: 'M15 21h2', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinecap: 'round' }),
+      jsx('path', { d: 'M26 24c3 0 4 2 4 4', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinecap: 'round', opacity: 0.7 })
+    ]
+  })
 }
 
 function ToolLine({ tool }) {
@@ -52,6 +76,18 @@ function ToolLine({ tool }) {
 
 function Built({ out }) {
   const check = out.validation || {}
+  const [action, setAction] = useState(null)
+  const [busyAction, setBusyAction] = useState('')
+
+  function act(kind) {
+    setBusyAction(kind)
+    setAction(null)
+    const call = kind === 'install' ? CreatorPanel.__api.install : CreatorPanel.__api.share
+    call(out.name)
+      .then(result => setAction({ kind, ...(result || {}) }))
+      .catch(err => setAction({ kind, ok: false, error: String(err && err.message ? err.message : err) }))
+      .finally(() => setBusyAction(''))
+  }
   const meta = (out.draft && out.draft.meta) || {}
   const metaLine = [meta.lane ? `${meta.lane} lane` : null,
     meta.model ? meta.model : null,
@@ -107,10 +143,59 @@ function Built({ out }) {
             children: out.files.join('  ·  ')
           })
         : null,
-      jsx('div', {
-        className: 'mt-1.5 text-[0.6rem] text-(--ui-text-quaternary)',
-        children: 'written to the outbox — nothing installed. Read it, then symlink it yourself.'
-      })
+      jsxs('div', {
+        className: 'mt-2.5 flex flex-wrap items-center gap-2',
+        children: [
+          jsx('button', {
+            onClick: () => act('install'),
+            disabled: !check.ok || !!busyAction,
+            className: 'rounded px-2.5 py-1 text-[0.68rem] font-medium',
+            style: {
+              background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
+              color: 'var(--ui-text-primary)',
+              whiteSpace: 'nowrap',
+              cursor: check.ok ? 'pointer' : 'default',
+              opacity: check.ok ? 1 : 0.5
+            },
+            children: busyAction === 'install' ? 'Installing…' : 'Install it'
+          }),
+          jsx('button', {
+            onClick: () => act('share'),
+            disabled: !!busyAction,
+            className: 'rounded px-2 py-1 text-[0.66rem]',
+            style: {
+              border: '1px solid var(--ui-stroke-secondary)',
+              color: 'var(--ui-text-secondary)',
+              whiteSpace: 'nowrap',
+              cursor: 'pointer'
+            },
+            children: busyAction === 'share' ? 'Packaging…' : 'Share or submit'
+          }),
+          jsx('span', {
+            className: 'text-[0.6rem] text-(--ui-text-quaternary)',
+            children: 'nothing runs until you install it'
+          })
+        ]
+      }),
+      action
+        ? jsxs('div', {
+            className: 'mt-2 rounded p-2 font-mono text-[0.62rem]',
+            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
+            children: action.ok
+              ? (action.kind === 'install'
+                  ? [
+                      jsx('div', { children: `installed → ${action.installed}` }, 'a'),
+                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: action.next }, 'b')
+                    ]
+                  : [
+                      jsx('div', { children: `packaged → ${action.dir}` }, 'a'),
+                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: (action.files || []).join('  ·  ') }, 'b'),
+                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: 'open SUBMISSION.md for the repo + PR steps' }, 'c')
+                    ])
+              : (action.error || 'failed')
+          })
+        : null
     ]
   })
 }
@@ -164,15 +249,25 @@ function CreatorPanel() {
     className: 'rounded border p-3',
     style: { borderColor: 'var(--ui-stroke-secondary)' },
     children: [
-      jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Build a plugin' }),
-      jsx('div', {
-        className: 'mt-0.5 text-[0.68rem] text-(--ui-text-quaternary)',
-        children: 'describe it, or start from something you already do · validated, never installed'
+      jsxs('div', {
+        className: 'flex items-center gap-2',
+        children: [
+          jsx(LazyCat, {}),
+          jsxs('div', {
+            children: [
+              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Make a plugin' }),
+              jsx('div', {
+                className: 'mt-0.5 text-[0.7rem] text-(--ui-text-tertiary)',
+                children: 'Say what you want Hermes to do. Or start from a job you already run.'
+              })
+            ]
+          })
+        ]
       }),
       jsx('textarea', {
         value: idea,
         onChange: event => setIdea(event.target.value),
-        placeholder: 'A plugin that watches GPU listings and tells me when one drops under $600…',
+        placeholder: 'Watch GPU prices and tell me when one drops under $600',
         rows: 3,
         className: 'mt-3 w-full resize-y rounded border bg-transparent p-2 text-[0.75rem] text-foreground outline-none',
         style: { borderColor: 'var(--ui-stroke-tertiary)' }
@@ -180,7 +275,7 @@ function CreatorPanel() {
       jsxs('div', {
         className: 'mt-2 flex flex-wrap items-center gap-2',
         children: [
-          jsx('span', { className: 'text-[0.66rem] text-(--ui-text-quaternary)', children: 'or start from' }),
+          jsx('span', { className: 'text-[0.68rem] text-(--ui-text-tertiary)', children: 'Or start from' }),
           jsx('select', {
             value: kind,
             onChange: event => { setKind(event.target.value); setSourceName('') },
@@ -219,7 +314,7 @@ function CreatorPanel() {
               cursor: canBuild ? 'pointer' : 'default',
               opacity: canBuild ? 1 : 0.5
             },
-            children: busy ? 'Building…' : 'Build plugin'
+            children: busy ? 'Making it…' : 'Make it'
           }),
           busy && stage
             ? jsx('span', { className: 'text-[0.64rem] text-(--ui-text-quaternary)', children: stage })
@@ -296,7 +391,7 @@ function LazyChip() {
   }, [])
   return jsx('button', {
     className: 'inline-flex h-full items-center px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) hover:text-foreground',
-    title: 'Open Lazy Plugin — build a plugin from a description or a workflow you already have',
+    title: 'Lazy Cat — make a plugin from a description or a job you already run',
     onClick: () => host.navigate(ROUTE),
     children: count == null ? 'Lazy' : `${count} built`
   })
@@ -316,7 +411,7 @@ export default {
       id: 'nav',
       area: SIDEBAR_NAV_AREA,
       order: 86,
-      data: { path: ROUTE, label: 'Lazy Plugin', codicon: 'wand' }
+      data: { path: ROUTE, label: '🐱 Lazy Cat', codicon: 'wand' }
     })
     ctx.register({
       id: 'open',
