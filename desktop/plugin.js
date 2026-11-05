@@ -113,7 +113,7 @@ function RecCard({ rec }) {
           ? (fix.note || `closest: ${fix.plugin} — weak match`)
           : 'no catalog plugin covers this'
   const detail = market.best
-    ? `${Math.round((market.best.score || 0) * 100)}% ${market.best.strength} · matched ${market.best.why}`
+    ? `${market.best.strength} match · ${market.best.why}`
     : `searched "${market.query || ''}" — nothing in the catalog`
   return jsxs('div', {
     className: 'rounded border p-3',
@@ -144,8 +144,9 @@ function RecCard({ rec }) {
             style: { color: fix.kind === 'install' ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
             children: fixLine
           }),
-          fix.url ? jsx(Link, { href: fix.url, children: 'open plugin ↗' }) : null,
-          !fix.url ? jsx(Link, { href: market.browse_url, children: 'browse the marketplace ↗' }) : null
+          fix.url ? jsx(Link, { href: fix.url, children: 'view on marketplace ↗' }) : null,
+          fix.source_url ? jsx(Link, { href: fix.source_url, children: 'source ↗' }) : null,
+          !fix.url ? jsx(Link, { href: market.browse_url, children: 'search the marketplace ↗' }) : null
         ]
       }),
       jsx('div', {

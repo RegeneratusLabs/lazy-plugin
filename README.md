@@ -20,28 +20,30 @@ Read-only. No LLM in the matching path. Never installs anything.
 4 of 200 skills also overlap a catalog plugin (3 not installed)
 ```
 
-## Skills worth sharing
-
-The second panel screens the skills the **agent itself wrote** and says which are worth publishing:
-`publish`, `needs scrub`, `too thin`, `already covered` by a catalog plugin, or `keep private`.
-Screening is deterministic — no model call, no token spend — and every verdict names the exact
-strings that decided it (personal paths, hosts, names, org, accounts, ports, with line numbers).
-
-`Stage for submission` writes a bundle to the plugin's outbox: `SKILL.md` with those strings
-replaced by placeholders (`<path>`, `<host>`, `<name>`, `<port>`), a `README.md` that credits the
-author under MIT, and `CONTRIBUTION.json` recording every redaction. Private skills are refused,
-not published with a warning. Skills whose bodies need the turn loop, a schedule or a UI are
-flagged `as plugin` rather than `as skill`.
-
-On a real profile (60 days): **35 agent-written skills — 18 publishable, 12 need scrubbing,
-5 keep private.**
-
 ## After changing `plugin_api.py`, restart the backend
 
 The dashboard mounts plugin API routes **in-process, at startup**. A running gateway keeps the
 router it imported, so a new route is a 404 until the process that owns the dashboard port
 restarts — while every route that existed at startup keeps working. That looks exactly like one
 broken button, so the page now says which it is instead of showing `HTTP 404`.
+
+## Where recommendations come from
+
+Matching runs against the live Nous marketplace catalog — the same JSON `hermes plugins search`
+reads — but scores tokens instead of substrings, so `"daily brief news provider"` finds
+`morning-briefing` instead of nothing.
+
+Two rules keep it quiet:
+
+- **Prose alone is not evidence.** A plugin must match on its name, title, tool names or category;
+  a chatty description that mentions `gateway`, `restart`, `port`, `repo` and `sync` no longer
+  absorbs every query. Description matches add credit but cannot qualify an entry alone.
+- **`strong` needs identity-level evidence plus 1.0 effective matched tokens.** Anything weaker is
+  `possible` and never prints an install command.
+
+Every hit links to `hermes-agent.nousresearch.com/marketplace/<name>`, carries the marketplace's own
+`hermes://plugin/install?catalog=<name>` handoff, and keeps the upstream repo as a separate `source`
+link. No hit means "no catalog plugin covers this" plus a link to the marketplace itself.
 
 ## The page
 
@@ -62,9 +64,10 @@ The second panel screens the skills the **agent itself wrote** and says which ar
 Screening is deterministic — no model call, no token spend — and every verdict names the exact
 strings that decided it (personal paths, hosts, names, org, accounts, ports, with line numbers).
 
-`Stage for submission` writes a bundle to the plugin's outbox: `SKILL.md` with those strings
-replaced by placeholders (`<path>`, `<host>`, `<name>`, `<port>`), a `README.md` that credits the
-author under MIT, and `CONTRIBUTION.json` recording every redaction. Private skills are refused,
+`Prepare submission` writes a portable Agent Plugin to the outbox: `plugin.json`,
+`skills/<slug>/SKILL.md` with personal strings replaced by placeholders, `plugin-catalog/<slug>.yaml`
+in the shape the repo PR expects, `SUBMISSION.md` with the fork/validate/PR steps, `README.md`
+crediting the author under MIT, and `CONTRIBUTION.json` recording every redaction. Private skills are refused,
 not published with a warning. Skills whose bodies need the turn loop, a schedule or a UI are
 flagged `as plugin` rather than `as skill`.
 

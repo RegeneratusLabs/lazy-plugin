@@ -31,10 +31,18 @@ _CORE = _load("core", "core.py")
 
 # name earns most: "marketplace-watch" should win for "marketplace" over a description that mentions it.
 FIELD_WEIGHT = {"name": 6.0, "tools": 4.0, "title": 3.0, "category": 2.0, "description": 1.0}
-# Relevance is coverage of the query's own information weight, not a sum that grows with query
-# length: a 12-word query used to beat a 3-word one on volume alone.
-STRONG_RELEVANCE = 0.50
-POSSIBLE_RELEVANCE = 0.40
+
+# How much a hit's field is worth. Prose is nearly free to match — a chatty description says
+# "gateway", "restart", "port", "repo", "sync" and will absorb any query thrown at it. Identity
+# fields are the only ones that show a plugin is ABOUT the need, so they carry the credit.
+FIELD_CREDIT = {"name": 1.0, "tools": 0.9, "title": 0.8, "category": 0.55, "description": 0.45}
+# Evidence is measured in "effective matched tokens": each token's idf divided by the catalog's
+# maximum idf, so a hit is worth the same in a 4-entry fixture as in a 976-plugin catalog. It is not
+# a fraction of the QUERY, because a recommendation's search terms are a shotgun of near-synonyms and
+# words absent from the whole catalog ("supervisor", "registry") would dilute a real match to nothing.
+# The prose gate below keeps precision; these decide how strongly to say it.
+STRONG_EVIDENCE = 1.0
+POSSIBLE_EVIDENCE = 0.6
 
 # Words that appear in half the catalog and therefore say nothing about which plugin someone needs.
 GENERIC = {
@@ -80,6 +88,19 @@ def _fields(entry: dict) -> dict:
     }
 
 
+MARKETPLACE = "https://hermes-agent.nousresearch.com/marketplace"
+
+
+def market_url(name: str) -> Optional[str]:
+    """The official Nous marketplace page for one plugin — not the upstream GitHub repo."""
+    return f"{MARKETPLACE}/{name}" if name else None
+
+
+def install_url(name: str) -> Optional[str]:
+    """The marketplace's own install handoff; the desktop app handles the hermes:// scheme."""
+    return f"hermes://plugin/install?catalog={name}" if name else None
+
+
 def _url(entry: dict) -> Optional[str]:
     for key in ("docs_url", "repo"):
         value = entry.get(key)
@@ -103,7 +124,7 @@ def index(entries: list) -> tuple[list, dict]:
     return docs, df
 
 
-def search(query: str, limit: int = 5, min_score: float = POSSIBLE_RELEVANCE,
+def search(query: str, limit: int = 5, min_score: float = POSSIBLE_EVIDENCE,
            entries: Optional[list] = None) -> list:
     """Rank catalog entries for a free-text query. Returns [] rather than a bad guess."""
     wanted = tokens(query)
@@ -126,6 +147,7 @@ def search(query: str, limit: int = 5, min_score: float = POSSIBLE_RELEVANCE,
     if not informative:
         return []
     unknown_idf = math.log(1 + total)
+    scale = unknown_idf or 1.0  # maximum possible idf in this catalog
     total_idf = sum(math.log(1 + total / (1 + df[t])) if t in df else unknown_idf
                     for t in informative) or 1.0
 
@@ -140,25 +162,31 @@ def search(query: str, limit: int = 5, min_score: float = POSSIBLE_RELEVANCE,
                     best_field, best_weight = field, weight
             if best_field is None:
                 continue
-            # field weight nudges credit up, but never past 1.6x a description-only hit
-            credit += idf * (0.85 + 0.15 * (best_weight / 6.0))
+            credit += (idf / scale) * FIELD_CREDIT.get(best_field, 0.45)
             matched.append({"token": token, "field": best_field})
-        relevance = min(1.0, credit / total_idf)
-        if relevance < POSSIBLE_RELEVANCE:
+        # Prose alone is not evidence: if nothing matched a name, title, tool or category, the
+        # entry is just talking about the same domain. Drop it rather than ranking it.
+        if not any(m["field"] != "description" for m in matched):
             continue
+        if credit < min_score:
+            continue
+        relevance = min(1.0, credit / total_idf)  # kept for display, not for the threshold
         name = str(entry.get("name") or "")
         hits.append({
             "name": name,
             "title": entry.get("title") or name,
             "score": round(relevance, 2),
+            "credit": round(credit, 1),
             # An install line needs identity-level evidence: a plugin earns "strong" only if the
             # wording of the NEED shows up in its name, title or tool names — not just its prose.
-            "strength": ("strong" if relevance >= STRONG_RELEVANCE
+            "strength": ("strong" if credit >= STRONG_EVIDENCE
                          and any(m["field"] in ("name", "title", "tools") for m in matched)
                          else "possible"),
             "matched": matched[:6],
             "why": ", ".join(f"{m['token']}→{m['field']}" for m in matched[:4]),
-            "url": _url(entry),
+            "url": market_url(name),
+            "source_url": _url(entry),
+            "install_url": install_url(name),
             "install": f"hermes plugins install {name}" if name else None,
             "category": entry.get("category"),
             "tier": entry.get("tier"),
@@ -171,7 +199,8 @@ def search(query: str, limit: int = 5, min_score: float = POSSIBLE_RELEVANCE,
     return hits[:max(1, limit)]
 
 
-BROWSE_URL = "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog"
+BROWSE_URL = f"{MARKETPLACE}?kind=plugins"
+CATALOG_REPO = "https://github.com/NousResearch/hermes-agent/tree/main/plugin-catalog"
 
 
 def search_for_recommendation(rec: dict, limit: int = 3) -> dict:

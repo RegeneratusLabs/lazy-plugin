@@ -275,10 +275,13 @@ def enrich(recs: list) -> list:
             rec["fix"] = {"kind": "install" if not best["installed"] else "installed",
                           "command": best["install"] if not best["installed"] else None,
                           "plugin": best["name"], "url": best["url"],
+                          "install_url": best.get("install_url"),
+                          "source_url": best.get("source_url"),
                           "note": f"strong match on marketplace: {best['name']}"}
         elif best:
             rec["fix"] = {"kind": "possible", "command": None, "plugin": best["name"],
-                          "url": best["url"],
+                          "url": best["url"], "install_url": best.get("install_url"),
+                          "source_url": best.get("source_url"),
                           "note": f"closest plugin: {best['name']} — weak match, check it before installing"}
         else:
             rec["fix"] = {"kind": "none", "command": None, "url": None,
