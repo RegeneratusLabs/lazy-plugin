@@ -39,6 +39,14 @@ function makeApi(ctx) {
       ...(init || {}),
       headers: { 'Content-Type': 'application/json', ...((init && init.headers) || {}) }
     })
+    if (res.status === 404) {
+      // The backend mounts plugin routes in-process at startup, so a running process keeps the
+      // router it imported. A 404 on a route that exists on disk means the backend predates it.
+      throw new Error(
+        `${path} is not in the running backend — restart the Hermes gateway/dashboard ` +
+        'to load the current plugin code (the gap report keeps working until then)'
+      )
+    }
     if (!res.ok) throw new Error(`${path} HTTP ${res.status}`)
     return res.json()
   }

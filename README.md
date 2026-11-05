@@ -20,6 +20,13 @@ Read-only. No LLM in the matching path. Never installs anything.
 4 of 200 skills also overlap a catalog plugin (3 not installed)
 ```
 
+## After changing `plugin_api.py`, restart the backend
+
+The dashboard mounts plugin API routes **in-process, at startup**. A running gateway keeps the
+router it imported, so a new route is a 404 until the process that owns the dashboard port
+restarts — while every route that existed at startup keeps working. That looks exactly like one
+broken button, so the page now says which it is instead of showing `HTTP 404`.
+
 ## Visual: the capability field
 
 A native desktop page (`desktop/plugin.js`, no build step) with a sidebar entry, a palette command,
