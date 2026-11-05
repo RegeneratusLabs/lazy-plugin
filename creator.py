@@ -335,6 +335,137 @@ in the plugin's config block, not in the call.
             "README.md": readme, "skills/" + name + "/SKILL.md": skill}
 
 
+# ---------- the model writes the spec, templates write the code
+
+SPEC_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "title": {"type": "string"},
+        "description": {"type": "string"},
+        "category": {"type": "string"},
+        "hooks": {"type": "array", "items": {"type": "string"}},
+        "tools": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "kind": {"type": "string", "enum": list(KINDS)},
+                    "behaviour": {"type": "string"},
+                    "params": {"type": "object"},
+                    "requires_env": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["name", "description", "kind"],
+            },
+        },
+    },
+    "required": ["name", "description", "tools"],
+}
+
+DRAFT_INSTRUCTIONS = """You design Hermes plugins from a description or from an existing workflow.
+
+Return ONE JSON object with this shape:
+{"name": "lowercase-hyphenated", "title": "Human Title", "description": "one or two sentences",
+ "category": "tools", "hooks": ["on_session_end"], "tools": [
+   {"name": "snake_case_tool", "description": "what it does, for the model",
+    "kind": "command|http|file|stub", "behaviour": "precise implementation note",
+    "params": {"arg": "what it means"}, "requires_env": ["API_KEY"]}]}
+
+Rules that decide whether this plugin is usable:
+- 1 to 5 tools. Each tool does one job.
+- kind=command when the job runs a binary (argv from config, never a shell string).
+- kind=http when the job fetches or posts a URL.
+- kind=file when the job reads or writes a path.
+- kind=stub ONLY when the job needs real logic that templates cannot express; then `behaviour`
+  must describe exactly what a developer should write.
+- requires_env lists env vars the tool needs, or omit it.
+- No prose outside the JSON. No code fences."""
+
+
+def _extract_json(text: str) -> Optional[dict]:
+    text = (text or "").strip()
+    if not text:
+        return None
+    for candidate in (text, text.split("```json", 1)[-1].split("```", 1)[0] if "```" in text else text):
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed
+        except ValueError:
+            pass
+    start, depth = None, 0
+    for index, char in enumerate(text):
+        if char == "{":
+            start = index if start is None else start
+            depth += 1
+        elif char == "}" and start is not None:
+            depth -= 1
+            if depth == 0:
+                try:
+                    parsed = json.loads(text[start:index + 1])
+                    if isinstance(parsed, dict):
+                        return parsed
+                except ValueError:
+                    start = None
+    return None
+
+
+def draft_spec(idea: str, llm, context: str = "") -> dict:
+    """Ask the model for a spec, then hold it to the same rules as a hand-written one."""
+    idea = _clean(idea, 2000)
+    if len(idea) < 10:
+        return {"ok": False, "stage": "input", "problems": ["describe the plugin in a sentence or two"]}
+    if llm is None:
+        return {"ok": False, "stage": "llm",
+                "problems": ["no model available in this process — the page can still list sources"]}
+
+    payload = idea if not context else f"{idea}\n\nContext from the user's own setup:\n{context[:6000]}"
+    meta = {"lane": None, "model": None, "tokens": None}
+    raw = ""
+    try:
+        result = llm.complete_structured(
+            instructions=DRAFT_INSTRUCTIONS,
+            input=[{"type": "text", "text": payload}],
+            json_schema=SPEC_SCHEMA,
+            schema_name="scout.plugin_spec",
+            purpose="pluginscout.create",
+            temperature=0.2,
+            max_tokens=2000,
+            timeout=180,
+        )
+        raw = getattr(result, "text", "") or ""
+        parsed = getattr(result, "parsed", None) or _extract_json(raw)
+        meta.update(lane="structured", model=getattr(result, "model", None),
+                    tokens=getattr(getattr(result, "usage", None), "total_tokens", None))
+    except Exception as first:
+        meta["structured_error"] = f"{type(first).__name__}: {first}"[:300]
+        try:
+            result = llm.complete(
+                messages=[{"role": "system",
+                           "content": DRAFT_INSTRUCTIONS + "\n\nJSON only, no code fence."},
+                          {"role": "user", "content": payload}],
+                temperature=0.2, max_tokens=2000, timeout=180,
+                purpose="pluginscout.create.chat",
+            )
+            raw = getattr(result, "text", "") or ""
+            parsed = _extract_json(raw)
+            meta.update(lane="chat", model=getattr(result, "model", None),
+                        tokens=getattr(getattr(result, "usage", None), "total_tokens", None))
+        except Exception as second:
+            return {"ok": False, "stage": "llm",
+                    "problems": [f"model call failed: {type(second).__name__}: {second}"[:300]]}
+
+    if not isinstance(parsed, dict):
+        return {"ok": False, "stage": "parse", "raw": raw[:800], "meta": meta,
+                "problems": ["the model did not return a JSON object"]}
+
+    clean, problems = validate_spec(parsed)
+    return {"ok": clean is not None, "stage": "spec" if clean is None else "drafted",
+            "spec": clean, "problems": problems, "raw": raw[:800], "meta": meta}
+
+
 def create(spec: dict, outbox: Optional[Path] = None) -> dict:
     """Render, write, validate. Writes only inside the plugin's own outbox."""
     clean, problems = validate_spec(spec)

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -115,6 +116,47 @@ async def contributions_submit_all(payload: dict | None = None):
         days = 60
     mod = _contrib_mod()
     return await asyncio.to_thread(mod.submit_all, days)
+
+
+@router.get("/sources")
+async def sources():
+    """What the creator can build from: the agent's own skills and the scheduled jobs."""
+    return await asyncio.to_thread(_sources)
+
+
+def _sources() -> dict:
+    core = _core()
+    outbox = core.state_dir() / "created"
+    skills = []
+    try:
+        for skill in core.scan_skills():
+            if not skill.get("agent_created"):
+                continue
+            skills.append({"name": skill.get("name"), "description": skill.get("description") or "",
+                           "lines": skill.get("lines") or 0, "path": skill.get("path")})
+    except Exception as exc:
+        skills = [{"name": "unavailable", "description": f"{type(exc).__name__}", "lines": 0}]
+    jobs = []
+    try:
+        raw = json.loads((core.hermes_home() / "cron" / "jobs.json").read_text(encoding="utf-8"))
+        raw = raw if isinstance(raw, list) else raw.get("jobs", [])
+        for job in raw:
+            schedule = job.get("schedule") or {}
+            jobs.append({
+                "id": job.get("id"),
+                "name": job.get("name") or job.get("id"),
+                "schedule": schedule.get("expr") or schedule.get("value") or "",
+                "enabled": bool(job.get("enabled")),
+                "prompt": (job.get("prompt") or "")[:400],
+                "failures": job.get("failure_streak") or 0,
+            })
+    except Exception as exc:
+        jobs = [{"id": "unavailable", "name": f"{type(exc).__name__}", "schedule": "", "enabled": False}]
+    created = []
+    if outbox.is_dir():
+        created = sorted(p.name for p in outbox.iterdir() if (p / "plugin.yaml").exists())
+    return {"ok": True, "skills": sorted(skills, key=lambda s: s["name"] or ""),
+            "cron": jobs, "already_generated": created, "outbox": str(outbox)}
 
 
 @router.get("/readiness")

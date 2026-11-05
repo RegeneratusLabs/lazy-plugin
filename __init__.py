@@ -27,6 +27,10 @@ def register(ctx) -> None:
     # module. Publishing ctx on the module lets plugin_api.py find it by scanning sys.modules
     # (see dashboard/plugin_api.py:_find_ctx) instead of reaching into host internals.
 
+    # Sibling modules imported by path (dashboard router) share sys.modules but not ctx. `llm` is
+    # part of the host's remote facade set, so publishing it is sanctioned, not a host-internals poke.
+    globals()["SCOUT_CTX"] = ctx
+
     tools = _load("tools", "tools.py")
     schemas = _load("schemas", "schemas.py")
     hooks = _load("hooks", "hooks.py")
