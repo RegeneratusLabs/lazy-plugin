@@ -27,7 +27,7 @@ _HERE = Path(__file__).resolve().parent
 
 
 def _load(name: str, filename: str):
-    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", _HERE / filename)
+    spec = importlib.util.spec_from_file_location(f"lazyplugin_{name}", _HERE / filename)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -412,6 +412,35 @@ def _extract_json(text: str) -> Optional[dict]:
     return None
 
 
+def source_context(core, kind: str, name: str) -> str:
+    """The selected skill or cron job, as text the model has to build from."""
+    if not kind or not name:
+        return ""
+    if kind == "skill":
+        for skill in core.scan_skills():
+            if skill.get("name") == name:
+                try:
+                    body = Path(skill["path"]).read_text(encoding="utf-8", errors="replace")
+                except Exception:
+                    return ""
+                return f"SKILL {name}\n\n{body[:6000]}"
+        return ""
+    if kind == "cron":
+        try:
+            raw = json.loads((core.hermes_home() / "cron" / "jobs.json").read_text(encoding="utf-8"))
+            raw = raw if isinstance(raw, list) else raw.get("jobs", [])
+            for job in raw:
+                if name in (job.get("name"), job.get("id")):
+                    schedule = job.get("schedule") or {}
+                    return (f"CRON JOB {job.get('name')}\n"
+                            f"schedule: {schedule.get('expr') or schedule.get('value') or 'unknown'}\n"
+                            f"deliver: {job.get('deliver') or 'default'}\n\n"
+                            f"{(job.get('prompt') or '')[:6000]}")
+        except Exception:
+            return ""
+    return ""
+
+
 def draft_spec(idea: str, llm, context: str = "") -> dict:
     """Ask the model for a spec, then hold it to the same rules as a hand-written one."""
     idea = _clean(idea, 2000)
@@ -430,7 +459,7 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
             input=[{"type": "text", "text": payload}],
             json_schema=SPEC_SCHEMA,
             schema_name="scout.plugin_spec",
-            purpose="pluginscout.create",
+            purpose="lazy-plugin.create",
             temperature=0.2,
             max_tokens=2000,
             timeout=180,
@@ -447,7 +476,7 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
                            "content": DRAFT_INSTRUCTIONS + "\n\nJSON only, no code fence."},
                           {"role": "user", "content": payload}],
                 temperature=0.2, max_tokens=2000, timeout=180,
-                purpose="pluginscout.create.chat",
+                purpose="lazy-plugin.create.chat",
             )
             raw = getattr(result, "text", "") or ""
             parsed = _extract_json(raw)

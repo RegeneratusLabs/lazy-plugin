@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def _core():
     p = Path(__file__).parent / "core.py"
-    spec = importlib.util.spec_from_file_location("pluginscout_core", p)
+    spec = importlib.util.spec_from_file_location("lazyplugin_core", p)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -75,7 +75,7 @@ def flush() -> int:
                                snippet=ev["snippet"], session_id=ev["session_id"]):
                 ok += 1
         except Exception:
-            logger.debug("pluginscout: gap write failed", exc_info=True)
+            logger.debug("lazy-plugin: gap write failed", exc_info=True)
     try:
         core.prune_gaps()
     except Exception:
@@ -114,7 +114,7 @@ def on_post_tool_call(tool_name: Optional[str] = None, args: Any = None, result:
                 _queue("repeated_shellout", f"shellout:{head}", tool=tool_name or "",
                        snippet=command[:120], session=session)
     except Exception:
-        logger.debug("pluginscout: post_tool_call failed", exc_info=True)
+        logger.debug("lazy-plugin: post_tool_call failed", exc_info=True)
 
 
 def on_skill_lifecycle(action: Optional[str] = None, skill_name: Optional[str] = None,
@@ -125,7 +125,7 @@ def on_skill_lifecycle(action: Optional[str] = None, skill_name: Optional[str] =
         _queue("skill_created", f"skill:{skill_name}", tool="skill_manage",
                snippet=f"agent wrote skill {skill_name}", session=_session(kwargs))
     except Exception:
-        logger.debug("pluginscout: on_skill_lifecycle failed", exc_info=True)
+        logger.debug("lazy-plugin: on_skill_lifecycle failed", exc_info=True)
 
 
 def on_session_end(**kwargs: Any) -> None:
@@ -133,4 +133,4 @@ def on_session_end(**kwargs: Any) -> None:
         flush()
         _shellouts.clear()
     except Exception:
-        logger.debug("pluginscout: on_session_end failed", exc_info=True)
+        logger.debug("lazy-plugin: on_session_end failed", exc_info=True)

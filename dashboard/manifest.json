@@ -1,10 +1,10 @@
 {
-  "name": "pluginscout",
-  "label": "Scout",
-  "icon": "Sparkles",
+  "name": "lazy-plugin",
+  "label": "Lazy Plugin",
+  "icon": "Wand2",
   "version": "0.1.0",
   "tab": {
-    "path": "/pluginscout",
+    "path": "/lazy-plugin",
     "position": "after:skills"
   },
   "entry": "dist/index.js",

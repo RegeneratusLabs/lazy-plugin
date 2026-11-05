@@ -1,4 +1,4 @@
-"""pluginscout core — catalog, skills, identifiers, matching, gap ledger, report.
+"""lazy-plugin core — catalog, skills, identifiers, matching, gap ledger, report.
 
 Deliberately dependency-free (stdlib only) and transport-agnostic: both the agent half
 (``__init__.py``) and the dashboard half (``dashboard/plugin_api.py``) load this same module.
@@ -30,13 +30,13 @@ def hermes_home() -> Path:
 
 
 def state_dir() -> Path:
-    d = hermes_home() / "pluginscout"
+    d = hermes_home() / "lazy-plugin"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
 def skills_dir() -> Path:
-    override = os.environ.get("PLUGINSCOUT_SKILLS_DIR")
+    override = os.environ.get("LAZY_PLUGIN_SKILLS_DIR")
     return Path(override).expanduser() if override else hermes_home() / "skills"
 
 
@@ -102,7 +102,7 @@ def _fetch_remote() -> Optional[dict]:
 
 def _fetch_local_yaml() -> Optional[dict]:
     """Optional fallback: a checked-out catalog directory (env override only, never assumed)."""
-    d = os.environ.get("PLUGINSCOUT_CATALOG_DIR")
+    d = os.environ.get("LAZY_PLUGIN_CATALOG_DIR")
     if not d:
         return None
     root = Path(d).expanduser()

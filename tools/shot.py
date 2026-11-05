@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-ROOT = Path("/home/josh/projects/pluginscout")
+ROOT = Path("/home/josh/projects/lazy-plugin")
 
 
 def _load(name, filename):
@@ -140,19 +140,19 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
     {panel}
     {contrib_panel}
     <div class="foot">
-      <span>{report['catalog']['entries']} catalog entries · {report['headline']['matched_skills']} of {report['headline']['total_skills']} skills overlap a plugin</span>
-      <span>read-only · no LLM in the matching path</span>
+      <span>model writes the spec · templates write the code · the validator decides</span>
+      <span>generated plugins are never installed</span>
     </div>
   </div>
 </div>
 <div class="status"><span><b>{contrib_counts.get('publish', 0)} to share</b></span><span>plugin host: default</span></div>
 """
-Path("/home/josh/projects/pluginscout/assets/preview.html").write_text(DOC)
+Path("/home/josh/projects/lazy-plugin/assets/preview.html").write_text(DOC)
 
-out = "/home/josh/projects/pluginscout/assets/preview.png"
+out = "/home/josh/projects/lazy-plugin/assets/preview.png"
 subprocess.run(["chromium", "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-                "--force-device-scale-factor=2", "--window-size=1120,1000",
-                f"--screenshot={out}", "file:///home/josh/projects/pluginscout/assets/preview.html"],
+                "--force-device-scale-factor=2", "--window-size=1120,980",
+                f"--screenshot={out}", "file:///home/josh/projects/lazy-plugin/assets/preview.html"],
                check=False, capture_output=True, timeout=120)
 print("png:", out, Path(out).stat().st_size if Path(out).exists() else "MISSING")
 print("field:", field["total"], "events /", field["active_days"], "active days / peak", field["max"])

@@ -1,4 +1,4 @@
-/* Scout — pluginscout dashboard tab. Plain IIFE, no build step. */
+/* Scout — lazy-plugin dashboard tab. Plain IIFE, no build step. */
 (function () {
   "use strict";
 
@@ -9,7 +9,7 @@
   var useState = React.useState;
   var useEffect = React.useEffect;
 
-  var API = "/api/plugins/pluginscout";
+  var API = "/api/plugins/lazy-plugin";
 
   function Metric(props) {
     return h("div", { className: "flex flex-col gap-1" },
@@ -131,5 +131,5 @@
           loading ? "Refreshing…" : "Refresh catalog")));
   }
 
-  window.__HERMES_PLUGINS__.register("pluginscout", Scout);
+  window.__HERMES_PLUGINS__.register("lazy-plugin", Scout);
 })();

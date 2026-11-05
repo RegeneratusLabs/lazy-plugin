@@ -17,7 +17,7 @@ from typing import Optional
 
 
 def _load(name: str, filename: str):
-    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", Path(__file__).parent / filename)
+    spec = importlib.util.spec_from_file_location(f"lazyplugin_{name}", Path(__file__).parent / filename)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod

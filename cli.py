@@ -1,4 +1,4 @@
-"""``hermes pluginscout ...`` — same report, no model in the loop."""
+"""``hermes lazy-plugin ...`` — same report, no model in the loop."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from pathlib import Path
 
 def _load(name: str, filename: str):
     p = Path(__file__).parent / filename
-    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", p)
+    spec = importlib.util.spec_from_file_location(f"lazyplugin_{name}", p)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -51,7 +51,7 @@ def slash(raw_args: str = "") -> str:
 
 
 def setup(subparser) -> None:
-    sub = subparser.add_subparsers(dest="pluginscout_cmd")
+    sub = subparser.add_subparsers(dest="lazyplugin_cmd")
     rep = sub.add_parser("report", help="Skills that overlap a catalog plugin, plus recorded gaps")
     rep.add_argument("--json", action="store_true", help="Print the full report as JSON")
     rep.add_argument("--min-match", type=int, default=1, help="Minimum matched identifiers (default 1)")
@@ -72,7 +72,7 @@ def setup(subparser) -> None:
 
 def run(args) -> int:
     core = _core()
-    cmd = getattr(args, "pluginscout_cmd", None) or "report"
+    cmd = getattr(args, "lazyplugin_cmd", None) or "report"
 
     if cmd == "refresh":
         payload = core.load_catalog(force=True)
@@ -177,6 +177,6 @@ def run(args) -> int:
 if __name__ == "__main__":  # works regardless of plugin isolation mode
     import argparse
 
-    parser = argparse.ArgumentParser(prog="pluginscout", description="Capability-gap instrument")
+    parser = argparse.ArgumentParser(prog="lazy-plugin", description="Capability-gap instrument")
     setup(parser)
     raise SystemExit(run(parser.parse_args()))

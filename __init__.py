@@ -1,6 +1,7 @@
-"""pluginscout — Hermes plugin entry point.
+"""lazy-plugin — build a plugin from a description, a skill, or a cron job.
 
-Wires: 3 tools, 3 hooks, a CLI subcommand, a slash command, and one bundled skill.
+Wires: 3 tools, a CLI subcommand, a slash command, one bundled skill, and a native desktop page
+with its own router.
 Sibling modules are loaded by path so this works whether Hermes imports the plugin as a
 package or as a standalone directory.
 """
@@ -16,7 +17,7 @@ _HERE = Path(__file__).resolve().parent
 
 
 def _load(name: str, filename: str):
-    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", _HERE / filename)
+    spec = importlib.util.spec_from_file_location(f"lazyplugin_{name}", _HERE / filename)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -33,32 +34,27 @@ def register(ctx) -> None:
 
     tools = _load("tools", "tools.py")
     schemas = _load("schemas", "schemas.py")
-    hooks = _load("hooks", "hooks.py")
     cli = _load("cli", "cli.py")
 
     for schema in schemas.ALL:
         ctx.register_tool(
             name=schema["name"],
-            toolset="pluginscout",
+            toolset="lazy-plugin",
             schema=schema,
             handler=tools.HANDLERS[schema["name"]],
             description=schema["description"].split(".")[0],
             emoji="\U0001F9ED",
         )
 
-    ctx.register_hook("post_tool_call", hooks.on_post_tool_call)
-    ctx.register_hook("on_skill_lifecycle", hooks.on_skill_lifecycle)
-    ctx.register_hook("on_session_end", hooks.on_session_end)
-
     ctx.register_cli_command(
-        "pluginscout",
-        help="What the agent could not do: catalog-overlapping skills and recorded capability gaps",
+        "lazy-plugin",
+        help="Build a plugin from a description, a skill, or a cron job",
         setup_fn=cli.setup,
         handler_fn=cli.run,
-        description="Capability-gap instrument for Hermes (read-only; never installs)",
+        description="Plugin creator: spec -> templates -> validated plugin (never installs)",
     )
-    ctx.register_command("scout", handler=cli.slash, args_hint="[report|gaps|refresh|explain <target>]",
-                         description="Capability gaps and catalog-overlapping skills")
+    ctx.register_command("lazy", handler=cli.slash, args_hint="[create|sources|built]",
+                         description="Build a plugin from a description or a workflow")
 
     skills_root = _HERE / "skills"
     if skills_root.is_dir():
@@ -68,4 +64,4 @@ def register(ctx) -> None:
                 try:
                     ctx.register_skill(child.name, skill_md)
                 except Exception:
-                    logger.debug("pluginscout: could not register skill %s", child.name, exc_info=True)
+                    logger.debug("lazy-plugin: could not register skill %s", child.name, exc_info=True)

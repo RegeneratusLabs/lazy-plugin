@@ -26,7 +26,7 @@ _HERE = Path(__file__).resolve().parent
 
 
 def _load(name: str, filename: str):
-    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", _HERE / filename)
+    spec = importlib.util.spec_from_file_location(f"lazyplugin_{name}", _HERE / filename)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod

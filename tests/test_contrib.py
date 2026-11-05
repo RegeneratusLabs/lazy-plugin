@@ -43,7 +43,7 @@ def contrib(monkeypatch, tmp_path):
           "1. read\n2. weigh\n3. decide\n")
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    monkeypatch.setenv("PLUGINSCOUT_SKILLS_DIR", str(skills))
+    monkeypatch.setenv("LAZY_PLUGIN_SKILLS_DIR", str(skills))
     mod = _load("contrib", "skills_contrib.py", tmp_path)
     mod._CORE.CATALOG_URL = (FIXTURES / "catalog.json").as_uri()
     # every fixture skill counts as agent-written; usage.json is what marks that

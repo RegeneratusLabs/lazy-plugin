@@ -20,7 +20,7 @@ def _load(name, filename):
 @pytest.fixture()
 def statedb(monkeypatch, tmp_path):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    monkeypatch.setenv("PLUGINSCOUT_SKILLS_DIR", str(tmp_path / "skills"))
+    monkeypatch.setenv("LAZY_PLUGIN_SKILLS_DIR", str(tmp_path / "skills"))
     db = tmp_path / "state.db"
     conn = sqlite3.connect(db)
     conn.execute("""CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT,

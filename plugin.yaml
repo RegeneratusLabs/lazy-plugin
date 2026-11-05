@@ -1,20 +1,14 @@
-name: pluginscout
+name: lazy-plugin
 version: 0.1.0
 description: >-
-  Capability-gap instrument. Records what the agent tried and could not do (command-not-found,
-  tool errors, repeated shell-outs, new skills written to cope) and reports which skills in this
-  profile overlap a plugin that already exists in the public Hermes catalog. Read-only on the
-  skills directory, never installs anything, no LLM in the matching path. Network: one GET of the
-  published catalog JSON, cached 24h. Writes only to $HERMES_HOME/pluginscout/.
+  Plugin creator. Describe a plugin in a sentence, or pick a skill the agent wrote or a cron job
+  you already run, and it builds one: the model writes a spec (name, 1-5 tools, handler kinds,
+  parameters), fixed templates write the code, and `hermes plugins validate` decides whether it
+  ships. Handler bodies are limited to three safe shapes (command, http, file) plus an honest stub,
+  so generated code always registers and never carries injected code. Writes only to
+  $HERMES_HOME/lazy-plugin/created/ and never installs anything.
 author: Josh Thomson
 provides_tools:
-  - pluginscout_report
-  - pluginscout_refresh
-  - pluginscout_explain
-  - pluginscout_backfill
-  - pluginscout_contributions
-  - pluginscout_readiness
-provides_hooks:
-  - post_tool_call
-  - on_skill_lifecycle
-  - on_session_end
+  - lazyplugin_create
+  - lazyplugin_sources
+  - lazyplugin_built

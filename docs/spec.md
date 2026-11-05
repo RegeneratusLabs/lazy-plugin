@@ -1,8 +1,8 @@
-# pluginscout
+# lazy-plugin
 
 **Your skill library is plugin debt — mostly it isn't, and this tells you which parts are.**
 
-Hermes records what your agent did. Nothing records what it *couldn't* do. `pluginscout` reads two
+Hermes records what your agent did. Nothing records what it *couldn't* do. `lazy-plugin` reads two
 things nobody joins up: the identifiers your skills actually invoke, and the failures your tool
 calls actually produced. Then it puts a catalog plugin next to each one that already exists.
 
@@ -54,7 +54,7 @@ Two panels, both reading the profile's own history:
 
 The heatmap and the ranked gap list were cut: they measured the wrong thing (1 of 108 gaps was
 catalog-answerable, and the top entries were `pip install` problems, not plugin problems). The gap
-ledger still records in the background, and `/gaps` plus the `pluginscout_report` tool still return
+ledger still records in the background, and `/gaps` plus the `lazyplugin_report` tool still return
 it — it just isn't the product.
 
 ## Skills worth sharing
@@ -111,7 +111,7 @@ outside what a skill can do, and they are the reason the plugin exists:
 2. **It remembers.** The ledger is SQLite on disk, keyed by signature, aggregated across sessions.
    A skill has no storage — the model would have to re-derive every prior failure from context it
    no longer has.
-3. **It reads history a skill can't afford to.** `pluginscout_backfill` walks 32 MB of JSONL
+3. **It reads history a skill can't afford to.** `lazyplugin_backfill` walks 32 MB of JSONL
    transcripts, keeps only missing-binary and missing-package events, and does it in under two
    seconds. Loading that into a context window is not a thing that can happen.
 
@@ -125,7 +125,7 @@ An earlier version of this plugin matched on words. Scored against the same 199 
 `changes` matched a finance plugin. It was useless and it looked impressive, which is the worst
 combination.
 
-`pluginscout` matches only on **concrete identifiers**: a command head in a fenced block, a package
+`lazy-plugin` matches only on **concrete identifiers**: a command head in a fenced block, a package
 name from an install line, a hostname in a URL, an env var ending `_API_KEY`/`_TOKEN`/`_SECRET`.
 It matches those against three things only — a plugin's name, a tool it declares in
 `provides_tools`, or its repo name. A skill called `ethics-filter` does **not** match the
@@ -135,14 +135,14 @@ It matches those against three things only — a plugin's name, a tool it declar
 ## Install
 
 ```bash
-hermes plugins install <owner>/pluginscout
+hermes plugins install <owner>/lazy-plugin
 ```
 
 Until it's in the catalog, symlink a checkout:
 
 ```bash
-ln -s "$PWD" ~/.hermes/plugins/pluginscout
-hermes plugins doctor pluginscout      # expect: 3 tool(s), 3 hook(s)
+ln -s "$PWD" ~/.hermes/plugins/lazy-plugin
+hermes plugins doctor lazy-plugin      # expect: 3 tool(s), 3 hook(s)
 ```
 
 Tools land in the next session (plugin tools are deferred behind the frozen prompt prefix). The
@@ -154,9 +154,9 @@ Three tools:
 
 | Tool | What it answers |
 |---|---|
-| `pluginscout_report` | Which skills overlap a catalog plugin, plus recorded gaps. `summary` \| `full` \| `json` |
-| `pluginscout_refresh` | Re-fetch the catalog and rebuild the index (one GET, cached 24h) |
-| `pluginscout_explain` | The exact evidence behind one match or one gap — so it can't bluff |
+| `lazyplugin_report` | Which skills overlap a catalog plugin, plus recorded gaps. `summary` \| `full` \| `json` |
+| `lazyplugin_refresh` | Re-fetch the catalog and rebuild the index (one GET, cached 24h) |
+| `lazyplugin_explain` | The exact evidence behind one match or one gap — so it can't bluff |
 
 Three hooks:
 
@@ -171,7 +171,7 @@ the gap feed, and catalog freshness.
 A CLI that works without the model in the loop:
 
 ```bash
-python3 cli.py report            # or: hermes pluginscout report, when plugin isolation is in_process
+python3 cli.py report            # or: hermes lazy-plugin report, when plugin isolation is in_process
 python3 cli.py gaps
 python3 cli.py explain spotify
 python3 cli.py refresh
@@ -184,7 +184,7 @@ python3 cli.py refresh
 categories, narrow skills and duplicate skills, and recommends **where to write more skills**. It
 does not know the plugin catalog exists.
 
-`pluginscout` answers the opposite question: **which skills a plugin has already made redundant,**
+`lazy-plugin` answers the opposite question: **which skills a plugin has already made redundant,**
 with the exact identifier as evidence and a pinned catalog entry as the output. Different input
 signal, inverted output, and a runtime half (measured tool failures) that a static scan cannot have.
 Also adjacent, also different: `token-lens` (token cost), `jev-skill-router-mcp` (which skill to

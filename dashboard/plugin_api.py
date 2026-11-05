@@ -1,4 +1,4 @@
-"""Dashboard backend for the Scout tab. Routes mount at /api/plugins/pluginscout/.
+"""Dashboard backend for the Scout tab. Routes mount at /api/plugins/lazy-plugin/.
 
 Handlers are async and push blocking work to a thread: the dashboard's event loop also serves
 chat and Desktop, so a synchronous catalog scan here would stall unrelated requests.
@@ -22,7 +22,7 @@ router = APIRouter()
 
 
 def _core():
-    spec = importlib.util.spec_from_file_location("pluginscout_core_api", _CORE_PATH)
+    spec = importlib.util.spec_from_file_location("lazyplugin_core_api", _CORE_PATH)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -30,7 +30,7 @@ def _core():
 
 def _readiness_mod():
     spec = importlib.util.spec_from_file_location(
-        "pluginscout_readiness_api", _PLUGIN_DIR / "readiness.py")
+        "lazyplugin_readiness_api", _PLUGIN_DIR / "readiness.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
@@ -38,7 +38,7 @@ def _readiness_mod():
 
 def _contrib_mod():
     spec = importlib.util.spec_from_file_location(
-        "pluginscout_contrib_api", _PLUGIN_DIR / "skills_contrib.py")
+        "lazyplugin_contrib_api", _PLUGIN_DIR / "skills_contrib.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     mod._CORE = _core()
@@ -116,6 +116,86 @@ async def contributions_submit_all(payload: dict | None = None):
         days = 60
     mod = _contrib_mod()
     return await asyncio.to_thread(mod.submit_all, days)
+
+
+def _find_ctx():
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "lazyplugin_ctxbridge", _PLUGIN_DIR / "ctxbridge.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)  # type: ignore[union-attr]
+        return mod.find()
+    except Exception as exc:
+        return None, {"found": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _creator_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_creator_api", _PLUGIN_DIR / "creator.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def _source_context(kind: str, name: str) -> str:
+    """Delegates to creator.source_context so the tool and the page cannot drift apart."""
+    try:
+        return _creator_mod().source_context(_core(), kind, name)
+    except Exception:
+        return ""
+
+
+@router.get("/created")
+async def created():
+    """Everything this plugin has generated so far. Never installed, always inspectable."""
+    return await asyncio.to_thread(_created)
+
+
+def _created() -> dict:
+    core = _core()
+    root = core.state_dir() / "created"
+    rows = []
+    if root.is_dir():
+        for child in sorted(root.iterdir()):
+            if not (child / "plugin.yaml").exists():
+                continue
+            spec = {}
+            try:
+                spec_file = child / "__init__.py"
+                for line in spec_file.read_text(encoding="utf-8", errors="replace").splitlines()[:12]:
+                    if line.startswith("PLUGIN = "):
+                        continue
+                spec = {"files": sorted(p.name for p in child.rglob("*") if p.is_file())}
+            except Exception:
+                pass
+            rows.append({"name": child.name, "dir": str(child), **spec})
+    return {"ok": True, "created": rows, "outbox": str(root)}
+
+
+@router.post("/create")
+async def create_plugin(payload: dict | None = None):
+    """Describe it, or pick a skill/cron job, and get a plugin that validates."""
+    payload = payload or {}
+    idea = str(payload.get("idea") or "").strip()
+    kind = str(payload.get("source_kind") or "").strip()
+    source = str(payload.get("source_name") or "").strip()
+    context = await asyncio.to_thread(_source_context, kind, source)
+    if not idea and source:
+        idea = f"Turn this {kind} into a plugin: {source}"
+    if len(idea) < 10:
+        return JSONResponse({"ok": False, "stage": "input",
+                             "problems": ["describe the plugin, or pick a skill or cron job"]},
+                            status_code=400)
+    ctx, meta = _find_ctx()
+    llm = getattr(ctx, "llm", None) if ctx is not None else None
+    creator = _creator_mod()
+    drafted = await asyncio.to_thread(creator.draft_spec, idea, llm, context)
+    if not drafted.get("ok"):
+        drafted["ctx"] = meta
+        return drafted
+    written = await asyncio.to_thread(creator.create, drafted["spec"])
+    written["draft"] = {"stage": drafted.get("stage"), "meta": drafted.get("meta")}
+    written["source"] = {"kind": kind, "name": source, "chars": len(context)}
+    return written
 
 
 @router.get("/sources")

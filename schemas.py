@@ -1,7 +1,7 @@
 """Tool schemas. These descriptions are the only thing the model always sees — keep them tight."""
 
 REPORT = {
-    "name": "pluginscout_report",
+    "name": "lazyplugin_report",
     "description": (
         "Report real capability gaps for this profile: skills whose bodies drive a concrete tool, "
         "package, host or env var that a plugin in the public Hermes catalog already provides, plus "
@@ -26,7 +26,7 @@ REPORT = {
 }
 
 REFRESH = {
-    "name": "pluginscout_refresh",
+    "name": "lazyplugin_refresh",
     "description": (
         "Re-fetch the public Hermes plugin catalog and rebuild the local index. Use after the user "
         "installs or publishes a plugin, or when the report says the catalog is stale. "
@@ -36,7 +36,7 @@ REFRESH = {
 }
 
 EXPLAIN = {
-    "name": "pluginscout_explain",
+    "name": "lazyplugin_explain",
     "description": (
         "Explain one match or one recorded gap by its exact evidence: which identifiers matched, "
         "which catalog entry provides them, what that plugin needs in env, and the install command. "
@@ -47,14 +47,14 @@ EXPLAIN = {
         "type": "object",
         "properties": {
             "target": {"type": "string",
-                       "description": "Skill name (as listed by pluginscout_report) or gap signature."},
+                       "description": "Skill name (as listed by lazyplugin_report) or gap signature."},
         },
         "required": ["target"],
     },
 }
 
 BACKFILL = {
-    "name": "pluginscout_backfill",
+    "name": "lazyplugin_backfill",
     "description": (
         "Mine past session transcripts on disk for capability gaps the agent hit before this plugin "
         "existed: missing binaries and missing Python packages only. Distinct from the live hooks — "
@@ -78,7 +78,7 @@ BACKFILL = {
 }
 
 CONTRIBUTIONS = {
-    "name": "pluginscout_contributions",
+    "name": "lazyplugin_contributions",
     "description": (
         "Screen the agent's own recently created skills and say which are worth publishing to the "
         "Hermes community: publishable, needs scrubbing (naming the exact personal strings and line "
@@ -108,7 +108,7 @@ CONTRIBUTIONS = {
 }
 
 READINESS = {
-    "name": "pluginscout_readiness",
+    "name": "lazyplugin_readiness",
     "description": (
         "Audit the installed Hermes plugins against the marketplace catalog's admission rules and "
         "say which could be submitted: manifest, version, description, LICENSE, declared repository, "
@@ -130,4 +130,40 @@ READINESS = {
     },
 }
 
-ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, CONTRIBUTIONS, READINESS]
+CREATE = {
+    "name": "lazyplugin_create",
+    "description": (
+        "Build a Hermes plugin from a description, or from an existing skill or cron job. The model "
+        "writes a spec (name, 1-5 tools, handler kind, params); fixed templates write the code; "
+        "`hermes plugins validate` decides whether it ships. Writes to the plugin's outbox only — "
+        "nothing is installed. Returns the spec, the files, and the validator's own output."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "idea": {"type": "string", "description": "What the plugin should do, in a sentence or two."},
+            "source_kind": {"type": "string", "enum": ["skill", "cron"],
+                            "description": "Build from something the user already does."},
+            "source_name": {"type": "string",
+                            "description": "Skill name or cron job name to build from."},
+        },
+        "required": [],
+    },
+}
+
+SOURCES = {
+    "name": "lazyplugin_sources",
+    "description": (
+        "List what a plugin could be built from: the agent-written skills in this profile and the "
+        "scheduled cron jobs, with the details needed to pick one."
+    ),
+    "parameters": {"type": "object", "properties": {}, "required": []},
+}
+
+BUILT = {
+    "name": "lazyplugin_built",
+    "description": "List plugins this tool has generated, with their outbox paths.",
+    "parameters": {"type": "object", "properties": {}, "required": []},
+}
+
+ALL = [CREATE, SOURCES, BUILT]

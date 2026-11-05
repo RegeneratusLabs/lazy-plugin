@@ -5,14 +5,14 @@
 # boot are a 404 while every older route keeps working — one dead button, everything else fine.
 # This checks the only thing that matters: does the process predate the file?
 #
-#   ~/projects/pluginscout/tools/verify-backend.sh
+#   ~/projects/lazy-plugin/tools/verify-backend.sh
 #
 # Exit 0 = backend is current. Exit 1 = stale; bounce the backend from a shell outside Hermes
 # (README → "Restart the backend"), then run this again.
 set -u
 
 PORT="${PORT:-9119}"
-PLUGIN_API="$HOME/projects/pluginscout/dashboard/plugin_api.py"
+PLUGIN_API="$HOME/projects/lazy-plugin/dashboard/plugin_api.py"
 LOG="$HOME/.hermes/logs/gui.log"
 
 pid=$(ss -ltnp 2>/dev/null | grep ":${PORT} " | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2)
@@ -24,7 +24,7 @@ fi
 started=$(ps -o lstart= -p "$pid" | sed 's/^ *//')
 started_epoch=$(date -d "$started" +%s 2>/dev/null || echo 0)
 mtime_epoch=$(stat -c %Y "$PLUGIN_API")
-mounts=$(grep -c 'Mounted plugin API routes: /api/plugins/pluginscout/' "$LOG" 2>/dev/null || echo 0)
+mounts=$(grep -c 'Mounted plugin API routes: /api/plugins/lazy-plugin/' "$LOG" 2>/dev/null || echo 0)
 unit=$(systemctl --user is-active hermes-gateway.service 2>/dev/null || echo unknown)
 loops=$(systemctl --user list-units --all 2>/dev/null | grep -c "auto-restart.*Dashboard" || true)
 
