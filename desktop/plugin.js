@@ -71,221 +71,22 @@ function makeApi(ctx) {
 
   return {
     report: () => rest('/report?format=json'),
-    recommend: (days, force) =>
-      rest('/recommend', { method: 'POST', body: JSON.stringify({ days, force: !!force }) }),
-    cached: days => rest(`/recommend?days=${days}`),
     contributions: days => rest(`/contributions?days=${days}`),
     packageSkill: (name, days) =>
       rest('/contributions/package', { method: 'POST', body: JSON.stringify({ name, days }) }),
     submitSkill: (name, days) =>
-      rest('/contributions/submit', { method: 'POST', body: JSON.stringify({ name, days }) })
+      rest('/contributions/submit', { method: 'POST', body: JSON.stringify({ name, days }) }),
+    submitAll: days =>
+      rest('/contributions/submit-all', { method: 'POST', body: JSON.stringify({ days }) })
   }
 }
-
-// ---------- recommend panel (button one)
-
-const RANGES = [
-  { days: 7, label: '7 days' },
-  { days: 14, label: '14 days' },
-  { days: 30, label: '30 days' }
-]
-
-function Evidence({ item }) {
-  return jsxs('div', {
-    className: 'mt-1 border-l pl-2',
-    style: { borderColor: 'var(--ui-stroke-tertiary)' },
-    children: [
-      jsx('div', { className: 'font-mono text-[0.68rem] text-(--ui-text-tertiary)', children: `“${item.quote}”` }),
-      jsx('div', { className: 'text-[0.62rem] text-(--ui-text-quaternary)', children: `${item.date} · ${item.session_id}` })
-    ]
-  })
-}
-
-function RecCard({ rec }) {
-  const fix = rec.fix || {}
-  const market = rec.marketplace || {}
-  const fixLine =
-    fix.kind === 'install'
-      ? `hermes plugins install ${fix.plugin}`
-      : fix.kind === 'installed'
-        ? `${fix.plugin} is already installed`
-        : fix.kind === 'possible'
-          ? (fix.note || `closest: ${fix.plugin} — weak match`)
-          : 'no catalog plugin covers this'
-  const detail = market.best
-    ? `${market.best.strength} match · ${market.best.why}`
-    : `searched "${market.query || ''}" — nothing in the catalog`
-  return jsxs('div', {
-    className: 'rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-tertiary)' },
-    children: [
-      jsxs('div', {
-        className: 'flex items-baseline justify-between gap-3',
-        children: [
-          jsx('div', { className: 'text-[0.82rem] font-medium text-foreground', children: rec.title }),
-          jsx('div', {
-            className: 'shrink-0 text-[0.62rem] uppercase tracking-wide text-(--ui-text-quaternary)',
-            children: rec.evidence_strength === 'recurring'
-              ? `${rec.occurrences} sessions`
-              : 'single session'
-          })
-        ]
-      }),
-      jsx('div', { className: 'mt-1 text-[0.74rem] text-(--ui-text-secondary)', children: rec.job }),
-      rec.why_plugin
-        ? jsx('div', { className: 'mt-1 text-[0.70rem] text-(--ui-text-tertiary)', children: rec.why_plugin })
-        : null,
-      jsx('div', { className: 'mt-2', children: (rec.evidence || []).map((e, i) => jsx(Evidence, { item: e }, i)) }),
-      jsxs('div', {
-        className: 'mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1',
-        children: [
-          jsx('span', {
-            className: 'font-mono text-[0.68rem]',
-            style: { color: fix.kind === 'install' ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-            children: fixLine
-          }),
-          fix.url ? jsx(Link, { href: fix.url, children: 'view on marketplace ↗' }) : null,
-          fix.source_url ? jsx(Link, { href: fix.source_url, children: 'source ↗' }) : null,
-          !fix.url ? jsx(Link, { href: market.browse_url, children: 'search the marketplace ↗' }) : null
-        ]
-      }),
-      jsx('div', {
-        className: 'mt-1 truncate text-[0.6rem] text-(--ui-text-quaternary)',
-        children: detail
-      })
-    ]
-  })
-}
-
-function RecommendPanel() {
-  const [days, setDays] = useState(7)
-  const [busy, setBusy] = useState(false)
-  const [result, setResult] = useState(null)
-  const [error, setError] = useState('')
-
-  useEffect(() => {
-    let live = true
-    RecommendPanel.__api
-      .cached(days)
-      .then(payload => { if (live && payload && payload.cached) setResult(payload) })
-      .catch(() => {})
-    return () => { live = false }
-  }, [days])
-
-  function run(force) {
-    setBusy(true)
-    setError('')
-    RecommendPanel.__api
-      .recommend(days, force)
-      .then(payload => { setResult(payload); if (payload && payload.ok === false) setError(payload.error || 'no result') })
-      .catch(err => setError(String(err && err.message ? err.message : err)))
-      .finally(() => setBusy(false))
-  }
-
-  const recs = (result && result.recommendations) || []
-  const dropped = (result && result.dropped) || []
-
-  return jsxs('div', {
-    className: 'rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-secondary)' },
-    children: [
-      jsxs('div', {
-        className: 'flex flex-wrap items-center justify-between gap-3',
-        children: [
-          jsxs('div', {
-            children: [
-              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Where a plugin would have saved you work' }),
-              jsx('div', {
-                className: 'mt-0.5 text-[0.68rem] text-(--ui-text-quaternary)',
-                children: 'reads your real sessions · every claim carries a quote from the log · nothing is installed'
-              })
-            ]
-          }),
-          jsxs('div', {
-            className: 'flex items-center gap-1',
-            children: [
-              ...RANGES.map(r =>
-                jsx('button', {
-                  key: r.days,
-                  onClick: () => setDays(r.days),
-                  className: 'rounded px-2 py-1 text-[0.68rem]',
-                  style: {
-                    border: '1px solid var(--ui-stroke-tertiary)',
-                    color: days === r.days ? 'var(--ui-text-primary)' : 'var(--ui-text-tertiary)',
-                    background: days === r.days ? 'var(--ui-bg-tertiary)' : 'transparent'
-                  },
-                  children: r.label
-                }, r.days)
-              ),
-              jsx('button', {
-                onClick: () => run(!!result),
-                disabled: busy,
-                className: 'ml-1 shrink-0 rounded px-3 py-1 text-[0.7rem] font-medium',
-                style: {
-                  background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
-                  color: 'var(--ui-text-primary)',
-                  whiteSpace: 'nowrap',
-                  opacity: busy ? 0.6 : 1,
-                  cursor: busy ? 'default' : 'pointer'
-                },
-                children: busy ? 'Reading…' : result ? 'Recommend again' : 'Recommend me a plugin'
-              })
-            ]
-          })
-        ]
-      }),
-      error
-        ? jsxs('div', {
-            className: 'mt-3 rounded p-2 text-[0.7rem]',
-            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
-            children: [
-              jsx('div', { children: error }),
-              result && result.fallback
-                ? jsx('div', { className: 'mt-1 font-mono text-[0.66rem] text-(--ui-text-quaternary)', children: `ask the agent to run ${result.fallback}` })
-                : null
-            ]
-          })
-        : null,
-      recs.length
-        ? jsxs('div', {
-            className: 'mt-3 flex flex-col gap-2',
-            children: [
-              ...recs.map((rec, i) => jsx(RecCard, { rec }, i)),
-              jsxs('div', {
-                className: 'flex justify-between text-[0.62rem] text-(--ui-text-quaternary)',
-                children: [
-                  jsx('div', {
-                    children: `${result.stats.sessions} sessions · ${result.stats.tool_calls} tool calls · ${result.llm && result.llm.model ? result.llm.model : 'model'}${result.cached ? ' · cached' : ''}`
-                  }),
-                  jsx('div', {
-                    children: dropped.length
-                      ? `${dropped.length} suggestion${dropped.length === 1 ? '' : 's'} discarded — evidence not found in the log`
-                      : ''
-                  })
-                ]
-              })
-            ]
-          })
-        : null,
-      !recs.length && !error && !busy && result && result.ok === false && result.reason
-        ? jsx('div', { className: 'mt-2 text-[0.7rem] text-(--ui-text-tertiary)', children: result.reason })
-        : null
-    ]
-  })
-}
-
-RecommendPanel.__api = null
 
 // ---------- page
 
 function ScoutPage() {
-  return jsxs('div', {
+  return jsx('div', {
     className: 'flex flex-col gap-4 p-5',
-    children: [
-      jsx(RecommendPanel, {}),
-      jsx(ContributionsPanel, {})
-    ]
+    children: [jsx(ContributionsPanel, {})]
   })
 }
 
@@ -421,6 +222,15 @@ function ContributionCard({ item, days }) {
                     children: staged.files.join('  ·  ')
                   })
                 : null,
+              staged.validation
+                ? jsx('div', {
+                    className: 'mt-1 font-mono text-[0.6rem]',
+                    style: { color: staged.validation.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
+                    children: staged.validation.ok
+                      ? 'hermes plugins validate: PASS'
+                      : `blocked — ${(staged.validation.output || []).filter(l => l.includes('✗')).join(' ') || 'validation failed'}`
+                  })
+                : null,
               (staged.steps || []).length
                 ? jsx('div', {
                     className: 'mt-1.5 flex flex-col gap-0.5',
@@ -440,6 +250,17 @@ function ContributionsPanel() {
   const [data, setData] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [batch, setBatch] = useState(null)
+  const [batchBusy, setBatchBusy] = useState(false)
+
+  function prepareAll() {
+    setBatchBusy(true)
+    ContributionsPanel.__api
+      .submitAll(days)
+      .then(out => setBatch(out))
+      .catch(err => setBatch({ ok: false, error: String(err && err.message ? err.message : err) }))
+      .finally(() => setBatchBusy(false))
+  }
 
   useEffect(() => {
     let live = true
@@ -495,6 +316,20 @@ function ContributionsPanel() {
               jsx('span', {
                 className: 'ml-1 text-[0.64rem] text-(--ui-text-quaternary)',
                 children: busy ? 'scanning…' : `${items.length} shown`
+              }),
+              jsx('button', {
+                onClick: prepareAll,
+                disabled: batchBusy || !items.length,
+                className: 'ml-2 shrink-0 rounded px-2.5 py-1 text-[0.66rem] font-medium',
+                style: {
+                  background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
+                  color: 'var(--ui-text-primary)',
+                  whiteSpace: 'nowrap',
+                  cursor: batchBusy ? 'default' : 'pointer',
+                  opacity: items.length ? 1 : 0.5
+                },
+                children: batchBusy ? 'Preparing…' : 'Prepare all'
               })
             ]
           })
@@ -507,6 +342,16 @@ function ContributionsPanel() {
         ? jsx('div', {
             className: 'mt-3 flex flex-col gap-2',
             children: items.slice(0, 8).map((item, i) => jsx(ContributionCard, { item, days }, `${item.name}-${i}`))
+          })
+        : null,
+      batch
+        ? jsx('div', {
+            className: 'mt-2 rounded px-2 py-1 font-mono text-[0.62rem]',
+            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
+            children: batch.ok
+              ? `${batch.total} prepared · ${batch.passed} passed validate · ${batch.total - batch.passed} blocked · ${Object.entries(batch.skipped || {}).map(([k, v]) => v + ' ' + k).join(', ')}`
+
+              : (batch.error || 'batch failed')
           })
         : null,
       jsxs('div', {
@@ -542,7 +387,7 @@ function ScoutChip() {
   }, [])
   return jsx('button', {
     className: 'inline-flex h-full items-center px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) hover:text-foreground',
-    title: 'Open Scout — plugin recommendations and shareable skills',
+    title: 'Open Scout — package your skills for the marketplace',
     onClick: () => host.navigate(ROUTE),
     children: count == null ? 'Scout' : `${count} to share`
   })
@@ -558,7 +403,6 @@ export default {
     const api = makeApi(ctx)
     ScoutPage.__api = api
     ScoutChip.__api = api
-    RecommendPanel.__api = api
     ContributionsPanel.__api = api
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: ROUTE }, render: () => jsx(ScoutPage, {}) })
     ctx.register({
@@ -573,7 +417,7 @@ export default {
       data: {
         id: 'pluginscout.open',
         label: 'Open Scout',
-        keywords: ['gaps', 'capability', 'plugins', 'recommend'],
+        keywords: ['skills', 'marketplace', 'submit', 'catalog', 'contribution'],
         run: () => host.navigate(ROUTE)
       }
     })

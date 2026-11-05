@@ -397,6 +397,26 @@ Full guidelines: {CATALOG_REPO}/blob/main/plugin-catalog/README.md
             "redactions": pkg.get("redactions", 0), "validation": check}
 
 
+def submit_all(days: int = DEFAULT_DAYS, limit: int = 50) -> dict:
+    """Prepare every candidate that is publishable or scrubbable. Validation runs per bundle."""
+    prepared, failed, skipped = [], [], {}
+    for row in candidates(days=days, limit=limit)["candidates"]:
+        if row["verdict"] not in ("publish", "scrub"):
+            skipped[row["verdict"]] = skipped.get(row["verdict"], 0) + 1
+            continue
+        out = submit(row["name"], days)
+        if not out.get("ok"):
+            failed.append({"name": row["name"], "error": out.get("error")})
+            continue
+        check = out.get("validation") or {}
+        blockers = [ln.strip() for ln in check.get("output", []) if ln.strip().startswith("✗")]
+        prepared.append({"name": row["name"], "dir": out["dir"], "valid": bool(check.get("ok")),
+                         "validation": check.get("output", [])[-2:], "blockers": blockers,
+                         "redactions": out.get("redactions", 0)})
+    return {"ok": True, "prepared": prepared, "failed": failed, "skipped": skipped,
+            "passed": sum(1 for p in prepared if p["valid"]), "total": len(prepared)}
+
+
 def run(days: int = DEFAULT_DAYS, limit: int = MAX_CANDIDATES) -> dict:
     """Everything the panel needs. Never raises."""
     try:

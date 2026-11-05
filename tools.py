@@ -114,31 +114,6 @@ def handle_backfill(params: Optional[dict] = None, **kwargs: Any) -> str:
         return _err(exc, "history unreadable; live hooks still record from now on")
 
 
-def handle_recommend(params: Optional[dict] = None, **kwargs: Any) -> str:
-    """The LLM pass. Needs ctx.llm, which only exists in the process that loaded the plugin."""
-    params = params or {}
-    try:
-        days = max(1, min(365, int(params.get("days") or 7)))
-    except (TypeError, ValueError):
-        days = 7
-    force = bool(params.get("force"))
-    try:
-        bridge = _load_sibling("ctxbridge", "ctxbridge.py")
-        ctx, meta = bridge.find_ctx()
-        if ctx is None:
-            return json.dumps({
-                "error": "no ctx.llm in this process",
-                "ctx": meta,
-                "hint": "press Recommend on the Scout page, or run this from the desktop app; "
-                        "a standalone python3 cli.py has no host to borrow a model from",
-            })
-        recommend = _load_sibling("recommend", "recommend.py")
-        recommend._CORE = core
-        return json.dumps(recommend.run(ctx, days=days, force=force))
-    except Exception as exc:
-        return _err(exc, "recommendation pass failed; the gap ledger is unaffected")
-
-
 def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
     """Screening needs no model; packaging writes only inside the plugin's own outbox."""
     params = params or {}
@@ -151,8 +126,11 @@ def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
         contrib = _load_sibling("skills_contrib", "skills_contrib.py")
         contrib._CORE = core
         name = str(params.get("package_name") or "").strip()
+        if not name and str(params.get("mode") or "") == "submit-all":
+            return json.dumps(contrib.submit_all(days=days, limit=limit))
         if name:
-            if str(params.get("mode") or "") == "submit":
+            mode = str(params.get("mode") or "")
+            if mode == "submit":
                 return json.dumps(contrib.submit(name, days=days))
             return json.dumps(contrib.package(name, days=days))
         return json.dumps(contrib.run(days=days, limit=limit))
@@ -165,6 +143,5 @@ HANDLERS = {
     "pluginscout_refresh": handle_refresh,
     "pluginscout_explain": handle_explain,
     "pluginscout_backfill": handle_backfill,
-    "pluginscout_recommend": handle_recommend,
     "pluginscout_contributions": handle_contributions,
 }

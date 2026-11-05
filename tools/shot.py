@@ -151,7 +151,7 @@ Path("/home/josh/projects/pluginscout/assets/preview.html").write_text(DOC)
 
 out = "/home/josh/projects/pluginscout/assets/preview.png"
 subprocess.run(["chromium", "--headless", "--no-sandbox", "--disable-gpu", "--hide-scrollbars",
-                "--force-device-scale-factor=2", "--window-size=1120,1560",
+                "--force-device-scale-factor=2", "--window-size=1120,1180",
                 f"--screenshot={out}", "file:///home/josh/projects/pluginscout/assets/preview.html"],
                check=False, capture_output=True, timeout=120)
 print("png:", out, Path(out).stat().st_size if Path(out).exists() else "MISSING")

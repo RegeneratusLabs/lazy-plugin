@@ -12,7 +12,6 @@ provides_tools:
   - pluginscout_refresh
   - pluginscout_explain
   - pluginscout_backfill
-  - pluginscout_recommend
   - pluginscout_contributions
 provides_hooks:
   - post_tool_call

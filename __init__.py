@@ -26,7 +26,6 @@ def register(ctx) -> None:
     # The dashboard router runs in this same plugin-host process, but is imported as its own
     # module. Publishing ctx on the module lets plugin_api.py find it by scanning sys.modules
     # (see dashboard/plugin_api.py:_find_ctx) instead of reaching into host internals.
-    globals()["SCOUT_CTX"] = ctx
 
     tools = _load("tools", "tools.py")
     schemas = _load("schemas", "schemas.py")
