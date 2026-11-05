@@ -1,0 +1,12 @@
+{
+  "name": "pluginscout",
+  "label": "Scout",
+  "icon": "Sparkles",
+  "version": "0.1.0",
+  "tab": {
+    "path": "/pluginscout",
+    "position": "after:skills"
+  },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

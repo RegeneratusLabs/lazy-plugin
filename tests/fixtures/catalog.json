@@ -1,0 +1,41 @@
+{
+  "generated_at": "2026-11-04T21:38:45Z",
+  "entries": [
+    {
+      "name": "brightdata",
+      "title": "Bright Data",
+      "description": "Web scraping and proxy network.",
+      "category": "research",
+      "tier": "community",
+      "repo": "https://github.com/example/hermes-brightdata",
+      "capabilities": {"provides_tools": ["brightdata_scrape"], "requires_env": [{"name": "BRIGHTDATA_API_KEY"}]}
+    },
+    {
+      "name": "office-desk",
+      "title": "Office Desk",
+      "description": "Create and edit docx, pptx and xlsx files.",
+      "category": "productivity",
+      "tier": "official",
+      "repo": "https://github.com/example/office-desk",
+      "capabilities": {"provides_tools": ["docx_create", "pptx_create"], "requires_env": []}
+    },
+    {
+      "name": "jev-cron-gate",
+      "title": "Cron Gate",
+      "description": "Cron scheduling with approvals.",
+      "category": "automation",
+      "tier": "community",
+      "repo": "https://github.com/example/jev-cron-gate",
+      "capabilities": {"provides_tools": ["cron_install"], "requires_env": []}
+    },
+    {
+      "name": "ethics-filter",
+      "title": "Ethics Filter",
+      "description": "Score decisions for ethical soundness.",
+      "category": "general",
+      "tier": "community",
+      "repo": "https://github.com/example/ethics-filter",
+      "capabilities": {"provides_tools": [], "requires_env": []}
+    }
+  ]
+}

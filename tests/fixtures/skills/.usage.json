@@ -1,0 +1,5 @@
+{
+  "scraping": {"created_by": "agent", "state": "active", "use_count": 2},
+  "cron-notes": {"created_by": "agent", "state": "stale", "use_count": 0},
+  "ethics-filter": {"created_by": "user", "state": "active", "use_count": 14}
+}
