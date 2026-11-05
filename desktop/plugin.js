@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-tiles-4'
+const BUILD = 'cat-tiles-5'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -377,10 +377,62 @@ function CreatorPanel() {
     if (state.ok && state.result) {
       setOut(state.result)
       if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+    } else if (String(state.error || '').includes('provider API key')) {
+      buildWithAgent()
+      return true
     } else {
       setError(state.error || 'the build did not produce a plugin')
     }
     return true
+  }
+
+  // The provider key resolves inside a turn, not inside a background job: this process serves
+  // several profiles and secrets are scoped per turn. So the page hands the build to the agent,
+  // which calls lazyplugin_create itself, and the tile appears when it lands.
+  function buildWithAgent() {
+    const prompt = `Use lazyplugin_create to build a plugin: ${idea.trim()}` +
+      (sourceName ? ` (build it from the ${kind} "${sourceName}")` : '')
+    setBusy(true)
+    setOut(null)
+    setError('')
+    setStage('handing this to the agent…')
+    const send = (typeof window !== 'undefined' && window.hermes && window.hermes.send)
+      ? window.hermes.send.bind(window.hermes)
+      : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
+    if (!send) {
+      fail('this app build cannot hand work to the agent — use `lazyplugin_create` in chat instead')
+      return
+    }
+    try {
+      send(prompt)
+    } catch (err) {
+      fail(String(err && err.message ? err.message : err))
+      return
+    }
+    let waited = 0
+    const tick = () => {
+      CreatorPanel.__api
+        .created()
+        .then(payload => {
+          const rows = (payload && payload.created) || []
+          const landed = rows.find(row => !CreatorPanel.__seen.includes(row.name))
+          if (landed) {
+            CreatorPanel.__seen = rows.map(row => row.name)
+            setBusy(false)
+            setStage('')
+            if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+            return
+          }
+          waited += 3000
+          if (waited > 240000) {
+            fail('the agent has not produced a plugin yet — check the chat for what it said')
+            return
+          }
+          setTimeout(tick, 3000)
+        })
+        .catch(() => setTimeout(tick, 3000))
+    }
+    setTimeout(tick, 4000)
   }
 
   function build() {
@@ -512,6 +564,7 @@ function CreatorPanel() {
 
 CreatorPanel.__api = null
 CreatorPanel.__onBuilt = null
+CreatorPanel.__seen = []
 
 function Badge({ tone = 'quiet', children }) {
   const styles = {
