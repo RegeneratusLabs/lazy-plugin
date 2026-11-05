@@ -55,14 +55,42 @@ Generated from a one-line description on this machine:
 Then imported and registered: 2 tools with correct model-facing schemas, 1 hook, handlers that
 return `{"ok": false, "error": "config.url is not set"}` instead of raising.
 
-## Never installs
+## Publishing to the community
+
+There is no upload endpoint and no self-serve registry. The catalog's rule 1 is a **human-merged
+gate**: a PR adding `plugin-catalog/<name>.yaml` to `NousResearch/hermes-agent`, pinning a full
+40-character commit SHA of a public repo. So publishing is four steps, each one checkable:
+
+```
+hermes plugins validate <bundle> --install-deps     the gate catalog CI runs
+git repo at a commit                                the SHA is the release
+plugin-catalog/<name>.yaml pinned to that SHA       every field the loader reads
+gh pr create → NousResearch/hermes-agent            one file, reviewed by a maintainer
+```
+
+**Publish to community** in the page does all of it with your `gh` login: validates, commits,
+creates the public repo, writes the entry from the real manifest, then offers **Open the catalog
+PR** — a fork, a branch, one added file, and the PR body with the disclosures rule 13 asks for.
+
+Verified on a real build: `RegeneratusLabs/chinese-marketplace-sourcing`, pinned at
+`c83bb98e…`, entry `OK: 1 file(s) valid` against `scripts/validate_plugin_catalog.py`. Installable
+anywhere with `hermes plugins install chinese-marketplace-sourcing` once merged.
+
+The PR is yours to send. Nothing here merges, and a maintainer can decline it.
+
+## Never installs by itself
 
 Generated plugins land in `$HERMES_HOME/lazy-plugin/created/<name>/`. Nothing is symlinked into
-`~/.hermes/plugins`, nothing is registered, nothing runs. You read the code, then decide:
+`~/.hermes/plugins` until you ask for it:
+
+**Install it** re-runs the validator and links the bundle into `~/.hermes/plugins/<name>`, then
+tells you the enable step. It refuses an unvalidated package and refuses to clobber an existing
+plugin, so a second click cannot quietly shadow something you already run.
 
 ```bash
 hermes plugins validate $HERMES_HOME/lazy-plugin/created/gpu-price-watch
 ln -s $HERMES_HOME/lazy-plugin/created/gpu-price-watch ~/.hermes/plugins/gpu-price-watch
+hermes plugins enable gpu-price-watch
 ```
 
 ## Tools
@@ -76,7 +104,7 @@ ln -s $HERMES_HOME/lazy-plugin/created/gpu-price-watch ~/.hermes/plugins/gpu-pri
 ## Tests
 
 ```bash
-python3 -m pytest tests -q     # 92 passed
+python3 -m pytest tests -q     # 106 passed
 ```
 
 ## Why this is not a skill

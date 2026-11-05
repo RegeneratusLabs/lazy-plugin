@@ -188,19 +188,54 @@ def _install_created(name: str) -> dict:
     source = core.state_dir() / "created" / name
     if not name or not (source / "plugin.yaml").exists():
         return {"ok": False, "error": f"no generated plugin named {name!r}"}
-    creator = _creator_mod()
-    check = creator.validate_plugin(source)
-    if not check.get("ok"):
-        return {"ok": False, "error": "the package does not validate; fix it first",
-                "validation": check}
-    target = core.hermes_home() / "plugins" / name
-    if target.exists() or target.is_symlink():
-        return {"ok": False, "error": f"{target} already exists — remove it or pick another name"}
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.symlink_to(source)
-    return {"ok": True, "installed": str(target), "source": str(source),
-            "validation": check,
-            "next": "restart the gateway or run `hermes plugins enable " + name + "`"}
+    publish = _publish_mod()
+    return publish.install_local(source, name, core.hermes_home() / "plugins",
+                                 _creator_mod().validate_plugin)
+
+
+def _publish_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_publish_api", _PLUGIN_DIR / "publish.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+@router.post("/created/publish")
+async def publish_created(payload: dict | None = None):
+    """Push a generated plugin to a public repo, pin its SHA, and write the catalog entry."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    owner = str(payload.get("owner") or "").strip()
+    open_pr = bool(payload.get("open_pr"))
+    bundle = _core().state_dir() / "created" / name
+    if not name or not (bundle / "plugin.yaml").exists():
+        return JSONResponse({"ok": False, "error": f"no generated plugin named {name!r}"},
+                            status_code=404)
+    job = uuid.uuid4().hex[:12]
+    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
+                 "steps": [], "started": time.time()}
+    threading.Thread(target=_run_publish, args=(job, bundle, name, owner, open_pr),
+                     daemon=True).start()
+    return {"ok": True, "job": job, "stage": "starting"}
+
+
+def _run_publish(job: str, bundle, name: str, owner: str, open_pr: bool) -> None:
+    entry = JOBS[job]
+    try:
+        publish = _publish_mod()
+        entry["stage"] = "checking the package"
+        manifest = _creator_mod().read_manifest(bundle)
+        if not owner:
+            owner = publish.gh_identity()["login"]
+        entry["stage"] = "publishing"
+        result = publish.publish(bundle, name, owner, manifest, open_pull_request=open_pr)
+        entry["steps"] = result.get("steps") or []
+        entry.update(ok=bool(result.get("ok")), stage="done" if result.get("ok") else "failed",
+                     result=result, error=result.get("error"))
+    except Exception as exc:
+        entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
+    finally:
+        entry["finished"] = time.time()
 
 
 @router.post("/created/share")

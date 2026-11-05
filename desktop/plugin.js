@@ -39,6 +39,8 @@ function makeApi(ctx) {
     create: payload => rest('/create', { method: 'POST', body: payload }),
     job: id => rest(`/create/job/${id}`),
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
+    publish: (name, openPr) => rest('/created/publish',
+      { method: 'POST', body: { name, open_pr: !!openPr } }),
     share: name => rest('/created/share', { method: 'POST', body: { name } })
   }
 }
@@ -61,6 +63,35 @@ function LazyCat({ size = 30 }) {
   })
 }
 
+function pollJob(api, job, onStage) {
+  return new Promise((resolve, reject) => {
+    let waited = 0
+    const tick = () => {
+      api
+        .job(job)
+        .then(state => {
+          if (state.stage === 'gone') {
+            reject(new Error('the job expired — check Built so far'))
+            return
+          }
+          if (state.stage && onStage) onStage(state.stage, state.steps || [])
+          if (state.ok === null || state.ok === undefined) {
+            waited += 1200
+            if (waited > 420000) {
+              reject(new Error('this is taking longer than it should'))
+              return
+            }
+            setTimeout(tick, 1200)
+            return
+          }
+          resolve(state)
+        })
+        .catch(reject)
+    }
+    setTimeout(tick, 800)
+  })
+}
+
 function ToolLine({ tool }) {
   return jsxs('div', {
     className: 'flex items-baseline gap-2 text-[0.68rem]',
@@ -75,18 +106,111 @@ function ToolLine({ tool }) {
   })
 }
 
+function ExtLink({ href, children }) {
+  return jsx('a', {
+    href,
+    onClick: event => {
+      event.preventDefault()
+      if (host && host.openExternal) host.openExternal(href)
+      else window.open(href, '_blank', 'noopener')
+    },
+    className: 'underline',
+    style: { color: 'var(--ui-accent)', cursor: 'pointer' },
+    children
+  })
+}
+
+function PublishResult({ action, onPr }) {
+  if (!action.ok) {
+    return jsx('div', {
+      className: 'font-mono text-[0.62rem]',
+      children: action.error || action.stage || 'publishing failed'
+    })
+  }
+  const lines = (action.steps || []).map(step =>
+    jsxs('div', {
+      className: 'flex items-baseline gap-2',
+      children: [
+        jsx('span', { style: { color: step.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
+          children: step.ok ? '✓' : '✗' }),
+        jsx('span', { className: 'w-[6.5rem] shrink-0 text-(--ui-text-quaternary)', children: step.step }),
+        jsx('span', {
+          className: 'truncate font-mono text-[0.6rem]',
+          children: (step.detail || []).join('  ')
+        })
+      ]
+    }, step.step))
+
+  return jsxs('div', {
+    children: [
+      jsx('div', { className: 'flex flex-col gap-0.5', children: lines }),
+      jsxs('div', {
+        className: 'mt-1.5 font-mono text-[0.6rem]',
+        children: [
+          jsx('div', { children: `repo  ${action.repo}` }, 'r'),
+          jsx('div', { children: `sha   ${action.sha}` }, 's'),
+          jsx('div', { children: `entry ${action.entry}` }, 'e'),
+          jsx('div', { className: 'text-(--ui-text-quaternary)', children: `now installable anywhere: ${action.install_command}` }, 'i')
+        ]
+      }),
+      action.pr
+        ? jsxs('div', {
+            className: 'mt-1',
+            children: ['pull request  ', jsx(ExtLink, { href: action.pr, children: action.pr })]
+          }, 'pr')
+        : null,
+      (action.stage === 'pinned' || action.pr_error)
+        ? jsxs('div', {
+            className: 'mt-1.5 flex flex-wrap items-center gap-2',
+            children: [
+              jsx('button', {
+                onClick: onPr,
+                className: 'rounded px-2 py-0.5 text-[0.62rem]',
+                style: { border: '1px solid color-mix(in srgb, var(--ui-accent) 45%, transparent)',
+                  color: 'var(--ui-text-primary)', cursor: 'pointer' },
+                children: 'Open the catalog PR'
+              }),
+              jsx('span', {
+                className: 'text-[0.58rem] text-(--ui-text-quaternary)',
+                children: action.pr_error
+                  ? action.pr_error
+                  : 'one PR to NousResearch/hermes-agent, reviewed by a maintainer'
+              })
+            ]
+          })
+        : null
+    ]
+  })
+}
+
 function Built({ out }) {
   const check = out.validation || {}
   const [action, setAction] = useState(null)
   const [busyAction, setBusyAction] = useState('')
 
-  function act(kind) {
+  function act(kind, openPr = false) {
     setBusyAction(kind)
-    setAction(null)
-    const call = kind === 'install' ? CreatorPanel.__api.install : CreatorPanel.__api.share
-    call(out.name)
-      .then(result => setAction({ kind, ...(result || {}) }))
-      .catch(err => setAction({ kind, ok: false, error: String(err && err.message ? err.message : err) }))
+    setAction({ kind, stage: 'starting…' })
+    if (kind === 'install') {
+      CreatorPanel.__api
+        .install(out.name)
+        .then(result => setAction({ kind, ...(result || {}) }))
+        .catch(err => setAction({ kind, ok: false, error: String(err && err.message ? err.message : err) }))
+        .finally(() => setBusyAction(''))
+      return
+    }
+    CreatorPanel.__api
+      .publish(out.name, openPr)
+      .then(start => {
+        if (!start || !start.job) {
+          throw new Error((start && start.error) || 'could not start publishing')
+        }
+        return pollJob(CreatorPanel.__api, start.job, (stage, steps) =>
+          setAction({ kind, stage, steps }))
+      })
+      .then(state => setAction({ kind: 'publish', ...(state.result || {}), ok: state.ok,
+        error: state.error, stage: '' }))
+      .catch(err => setAction({ kind: 'publish', ok: false, error: String(err && err.message ? err.message : err) }))
       .finally(() => setBusyAction(''))
   }
   const meta = (out.draft && out.draft.meta) || {}
@@ -162,16 +286,17 @@ function Built({ out }) {
             children: busyAction === 'install' ? 'Installing…' : 'Install it'
           }),
           jsx('button', {
-            onClick: () => act('share'),
-            disabled: !!busyAction,
+            onClick: () => act('publish'),
+            disabled: !check.ok || !!busyAction,
             className: 'rounded px-2 py-1 text-[0.66rem]',
             style: {
               border: '1px solid var(--ui-stroke-secondary)',
               color: 'var(--ui-text-secondary)',
               whiteSpace: 'nowrap',
-              cursor: 'pointer'
+              cursor: check.ok ? 'pointer' : 'default',
+              opacity: check.ok ? 1 : 0.5
             },
-            children: busyAction === 'share' ? 'Packaging…' : 'Share or submit'
+            children: busyAction === 'publish' ? 'Publishing…' : 'Publish to community'
           }),
           jsx('span', {
             className: 'text-[0.6rem] text-(--ui-text-quaternary)',
@@ -181,20 +306,18 @@ function Built({ out }) {
       }),
       action
         ? jsxs('div', {
-            className: 'mt-2 rounded p-2 font-mono text-[0.62rem]',
+            className: 'mt-2 rounded p-2 text-[0.64rem]',
             style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
-            children: action.ok
-              ? (action.kind === 'install'
-                  ? [
-                      jsx('div', { children: `installed → ${action.installed}` }, 'a'),
-                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: action.next }, 'b')
-                    ]
-                  : [
-                      jsx('div', { children: `packaged → ${action.dir}` }, 'a'),
-                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: (action.files || []).join('  ·  ') }, 'b'),
-                      jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: 'open SUBMISSION.md for the repo + PR steps' }, 'c')
-                    ])
-              : (action.error || 'failed')
+            children: action.kind === 'publish' ? PublishResult({ action, onPr: () => act('publish', true) })
+              : jsxs('div', {
+                  className: 'font-mono text-[0.62rem]',
+                  children: action.ok
+                    ? [
+                        jsx('div', { children: `installed → ${action.installed}` }, 'a'),
+                        jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: action.next }, 'b')
+                      ]
+                    : (action.error || 'failed')
+                })
           })
         : null
     ]
