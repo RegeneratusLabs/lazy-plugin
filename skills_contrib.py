@@ -14,6 +14,7 @@ from __future__ import annotations
 import datetime
 import importlib.util
 import json
+import subprocess
 import re
 from pathlib import Path
 from typing import Optional
@@ -178,6 +179,32 @@ def _scrub(text: str) -> tuple[str, int]:
     return text, replaced
 
 
+def portable_frontmatter(text: str) -> tuple[str, bool]:
+    """Agent Skills v1 wants `metadata` to map strings to strings; a nested list fails it.
+
+    Hermes' own skills carry `metadata.hermes.tags: [...]`, which validates fine locally but warns
+    in a portable package. Strip the block for the submission copy and say so in CONTRIBUTION.json.
+    """
+    if not text.startswith("---"):
+        return text, False
+    end = text.find("\n---", 3)
+    if end == -1:
+        return text, False
+    head, rest = text[:end], text[end:]
+    lines, out, skipping = head.splitlines(), [], False
+    removed = False
+    for line in lines:
+        if skipping and (line.startswith((" ", "\t")) or not line.strip()):
+            removed = True
+            continue
+        skipping = False
+        if line.startswith("metadata:"):
+            skipping, removed = True, True
+            continue
+        out.append(line)
+    return "\n".join(out) + rest, removed
+
+
 def slugify(name: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-") or "skill"
 
@@ -196,6 +223,7 @@ def package(name: str, days: int = DEFAULT_DAYS) -> dict:
     source = Path(row["path"])
     body = source.read_text(encoding="utf-8", errors="replace")
     scrubbed, count = _scrub(body)
+    scrubbed, stripped_meta = portable_frontmatter(scrubbed)
     outdir = _CORE.state_dir() / PACKAGE_OUTBOX / slugify(name)
     outdir.mkdir(parents=True, exist_ok=True)
 
@@ -231,6 +259,7 @@ generalised for sharing. MIT — keep the attribution if you fork it.
         "name": row["name"], "contribute_as": row["contribute_as"], "source": str(source),
         "verdict": row["verdict"], "reasons": row["reasons"],
         "redactions": row["markers"], "redaction_count": count,
+        "metadata_block_stripped": stripped_meta,
         "packaged_at": datetime.datetime.now().isoformat(timespec="seconds"),
         "author": "Josh Thomson", "license": "MIT",
     }, indent=1), encoding="utf-8")
@@ -242,6 +271,22 @@ generalised for sharing. MIT — keep the attribution if you fork it.
 
 CATALOG_REPO = "https://github.com/NousResearch/hermes-agent"
 CATALOG_DIR_IN_REPO = "plugin-catalog"
+
+
+def validate(bundle: Path) -> dict:
+    """Run the same gate catalog CI runs, on the package we just generated.
+
+    The button's claim is only worth something if the artifact passes. Shelling out to the real
+    validator beats asserting it does.
+    """
+    try:
+        proc = subprocess.run(["hermes", "plugins", "validate", str(bundle)],
+                              capture_output=True, text=True, timeout=180)
+        text = (proc.stdout + proc.stderr).strip()
+        return {"ok": proc.returncode == 0,
+                "output": [ln for ln in text.splitlines() if ln.strip()][-6:]}
+    except Exception as exc:
+        return {"ok": False, "output": [f"validator not run: {type(exc).__name__}: {exc}"]}
 
 
 def submit(name: str, days: int = DEFAULT_DAYS) -> dict:
@@ -262,14 +307,17 @@ def submit(name: str, days: int = DEFAULT_DAYS) -> dict:
     skills_dir.mkdir(parents=True, exist_ok=True)
     (skills_dir / "SKILL.md").write_text((outdir / "SKILL.md").read_text(encoding="utf-8"),
                                          encoding="utf-8")
+    # Agent Plugins v1: exact $schema, author as an object, no unknown top-level fields.
+    # Skills are discovered by convention from skills/*/SKILL.md, not declared.
     (outdir / "plugin.json").write_text(json.dumps({
+        "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
         "name": slug,
         "version": "0.1.0",
         "description": description,
-        "author": "Josh Thomson",
+        "author": {"name": "Josh Thomson"},
         "license": "MIT",
-        "skills": [slug],
-    }, indent=1), encoding="utf-8")
+        "keywords": ["hermes-skill"],
+    }, indent=2) + "\n", encoding="utf-8")
 
     catalog_entry = {
         "name": slug,
@@ -292,6 +340,7 @@ def submit(name: str, days: int = DEFAULT_DAYS) -> dict:
     (entry_dir / f"{slug}.yaml").write_text(json.dumps(catalog_entry, indent=2) + "\n",
                                             encoding="utf-8")
 
+    check = validate(outdir)
     steps = [
         f"cd {outdir} && git init -q && git add -A && git commit -qm 'Add {slug} skill'",
         "create a PUBLIC GitHub repo and push it (owner or major contributor, per rule 5)",
@@ -337,11 +386,15 @@ capabilities that do not match reality, or a drive-by submission of someone else
 Full guidelines: {CATALOG_REPO}/blob/main/plugin-catalog/README.md
 """, encoding="utf-8")
 
+    with open(outdir / "SUBMISSION.md", "a", encoding="utf-8") as fh:
+        fh.write("\n## Validation at generation time\n\n```\n"
+                 + f"{'PASS' if check['ok'] else 'FAIL'}\n"
+                 + "\n".join(check["output"]) + "\n```\n")
     return {"ok": True, "name": name, "dir": str(outdir),
             "files": ["plugin.json", f"skills/{slug}/SKILL.md", f"{CATALOG_DIR_IN_REPO}/{slug}.yaml",
                       "SUBMISSION.md", "README.md", "CONTRIBUTION.json"],
             "steps": steps, "catalog_entry": str(entry_dir / f"{slug}.yaml"),
-            "redactions": pkg.get("redactions", 0)}
+            "redactions": pkg.get("redactions", 0), "validation": check}
 
 
 def run(days: int = DEFAULT_DAYS, limit: int = MAX_CANDIDATES) -> dict:
