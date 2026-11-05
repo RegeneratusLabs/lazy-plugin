@@ -441,6 +441,63 @@ def source_context(core, kind: str, name: str) -> str:
     return ""
 
 
+# keys are lowercase: the answer text comes from the page and is matched case-insensitively
+ANSWER_KINDS = {"fetch a url": "http", "read or write a file": "file",
+                "run a command": "command", "just scaffold it": "stub"}
+
+
+def spec_from_answers(answers: dict) -> dict:
+    """Six answers in, one spec out. Deterministic, offline, and it always validates.
+
+    The questionnaire exists because a blank text box produces plugins nobody needed: every
+    question here maps to a field the templates actually render.
+    """
+    purpose = _clean(answers.get("purpose") or answers.get("description") or "", 300)
+    if len(purpose) < 10:
+        return {"ok": False, "stage": "input",
+                "problems": ["say what it should do in one sentence"]}
+
+    name = (answers.get("name") or "").strip() or " ".join(purpose.split()[:5])
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "new-plugin"
+    kind = ANSWER_KINDS.get(str(answers.get("action") or "").strip().lower(), "stub")
+    target = _clean(answers.get("target") or "", 200)
+    returns = _clean(answers.get("returns") or "", 200)
+    trigger = str(answers.get("trigger") or "when I ask").strip().lower()
+    secret = _clean(answers.get("secret") or "", 60).upper().replace(" ", "_")
+    category = str(answers.get("category") or "tools").strip().lower()
+
+    verb = re.sub(r"[^a-z0-9]+", "_", purpose.lower().split()[0])[:18] or "run"
+    stem = slug.replace("-", "_")
+    tool_name = re.sub(r"_+", "_", stem if stem.startswith(verb) else f"{verb}_{stem}")[:40].strip("_") or "run_action"
+
+    params = {}
+    if kind == "http" and "{" not in target:
+        params["url"] = "endpoint to fetch, or leave empty to use the configured default"
+    if kind == "command":
+        params["args"] = "arguments passed to the configured command"
+    if returns:
+        params["expect"] = "what the caller wants back"
+
+    spec = {
+        "name": slug,
+        "title": " ".join(word.capitalize() for word in slug.replace("-", " ").split()),
+        "description": purpose,
+        "category": category,
+        "tools": [{
+            "name": tool_name,
+            "description": f"{purpose}" + (f" Returns {returns}." if returns else ""),
+            "kind": kind,
+            "behaviour": (f"Uses {target}. " if target else "") + (returns or ""),
+            "params": params,
+            **({"requires_env": [secret]} if secret else {}),
+        }],
+        "hooks": ["on_session_end"] if trigger.startswith("after every") else [],
+    }
+    clean, problems = validate_spec(spec)
+    return {"ok": clean is not None, "stage": "drafted" if clean else "spec",
+            "spec": clean, "problems": problems, "meta": {"lane": "questionnaire"}}
+
+
 def draft_spec(idea: str, llm, context: str = "") -> dict:
     """Ask the model for a spec, then hold it to the same rules as a hand-written one."""
     idea = _clean(idea, 2000)

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-tiles-5'
+const BUILD = 'cat-quiz-6'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -42,6 +42,8 @@ function makeApi(ctx) {
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
     publish: (name, openPr) => rest('/created/publish',
       { method: 'POST', body: { name, open_pr: !!openPr } }),
+    questions: () => rest('/questions'),
+    answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
     saveFile: (name, path, content) => rest('/created/file', { method: 'POST', body: { name, path, content } }),
@@ -328,6 +330,104 @@ function Built({ out }) {
   })
 }
 
+function Questionnaire({ onResult }) {
+  const [fields, setFields] = useState([])
+  const [answers, setAnswers] = useState({})
+  const [busy, setBusy] = useState(false)
+  const [note, setNote] = useState('')
+
+  useEffect(() => {
+    let live = true
+    CreatorPanel.__api
+      .questions()
+      .then(payload => {
+        if (!live) return
+        const list = (payload && payload.questions) || []
+        setFields(list)
+        setAnswers(Object.fromEntries(list.map(q => [q.id, q.default || ''])))
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+    return () => { live = false }
+  }, [])
+
+  const ready = (answers.purpose || '').trim().length >= 10
+
+  function submit() {
+    setBusy(true)
+    setNote('')
+    CreatorPanel.__api
+      .answers(answers)
+      .then(result => {
+        if (result && result.ok) {
+          setNote('')
+          if (onResult) onResult(result)
+          return
+        }
+        setNote(((result && result.problems) || []).join(' · ') || 'the answers did not make a plugin')
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+      .finally(() => setBusy(false))
+  }
+
+  function field(item) {
+    const value = answers[item.id] || ''
+    const set = next => setAnswers(prev => ({ ...prev, [item.id]: next }))
+    const shared = {
+      value,
+      onChange: event => set(event.target.value),
+      className: 'w-full rounded border bg-transparent px-1.5 py-1 text-[0.7rem] text-foreground outline-none',
+      style: { borderColor: 'var(--ui-stroke-tertiary)' }
+    }
+    return jsxs('div', {
+      className: 'flex flex-col gap-0.5',
+      children: [
+        jsx('label', { className: 'text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: item.label }),
+        item.type === 'select'
+          ? jsx('select', { ...shared, children: (item.options || []).map(option => jsx('option', { value: option, children: option }, option)) })
+          : jsx('textarea', { ...shared, rows: item.rows || 1, placeholder: item.placeholder || '' })
+      ]
+    }, item.id)
+  }
+
+  return jsxs('div', {
+    className: 'mt-3 flex flex-col gap-2',
+    children: [
+      jsx('div', {
+        className: 'text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)',
+        children: 'seven answers, no model needed'
+      }),
+      jsx('div', {
+        className: 'grid gap-2',
+        style: { gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))' },
+        children: fields.map(field)
+      }),
+      jsxs('div', {
+        className: 'flex items-center gap-2',
+        children: [
+          jsx('button', {
+            onClick: submit,
+            disabled: !ready || busy,
+            className: 'rounded px-3 py-1 text-[0.7rem] font-medium',
+            style: {
+              background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
+              color: 'var(--ui-text-primary)',
+              whiteSpace: 'nowrap',
+              cursor: ready ? 'pointer' : 'default',
+              opacity: ready ? 1 : 0.5
+            },
+            children: busy ? 'making it…' : 'make it'
+          }),
+          jsx('span', {
+            className: 'text-[0.6rem] text-(--ui-text-quaternary)',
+            children: note || (ready ? 'no model, no key — the spec is built from these answers' : 'start with what it should do')
+          })
+        ]
+      })
+    ]
+  })
+}
+
 function CreatorPanel() {
   const [idea, setIdea] = useState('')
   const [kind, setKind] = useState('skill')
@@ -493,6 +593,8 @@ function CreatorPanel() {
           })
         ]
       }),
+      jsx(Questionnaire, { onResult: setOut }),
+      jsx('div', { className: 'mt-1 text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: 'or describe it' }),
       jsx('textarea', {
         value: idea,
         onChange: event => setIdea(event.target.value),
@@ -598,84 +700,63 @@ function TileButton({ onClick, disabled, primary, children }) {
   })
 }
 
-function FileEditor({ name, onSaved }) {
-  const [files, setFiles] = useState([])
-  const [path, setPath] = useState('')
-  const [content, setContent] = useState('')
-  const [saved, setSaved] = useState('')
+function ChatEdit({ name, prompt, onSaved }) {
+  const [text, setText] = useState('')
   const [note, setNote] = useState('')
-  const [dirty, setDirty] = useState(false)
+  const [sent, setSent] = useState(false)
 
-  useEffect(() => {
-    let live = true
-    CreatorPanel.__api
-      .files(name)
-      .then(payload => {
-        if (!live) return
-        const list = (payload && payload.files) || []
-        setFiles(list)
-        const first = list.find(f => f.path === 'plugin.yaml') || list[0]
-        if (first) open(first.path)
-      })
-      .catch(err => { if (live) setNote(String(err && err.message ? err.message : err)) })
-    return () => { live = false }
-  }, [name])
-
-  function open(target) {
-    setPath(target)
-    setDirty(false)
-    setSaved('')
-    CreatorPanel.__api
-      .readFile(name, target)
-      .then(payload => {
-        setContent(payload && payload.ok ? payload.content : '')
-        if (payload && !payload.ok) setNote(payload.error || 'could not read that file')
-        else setNote('')
-      })
-      .catch(err => setNote(String(err && err.message ? err.message : err)))
-  }
-
-  function save() {
-    setNote('')
-    CreatorPanel.__api
-      .saveFile(name, path, content)
-      .then(result => {
-        setDirty(false)
-        const check = (result && result.validation) || {}
-        setSaved(check.ok ? 'saved · still validates' : `saved · ${(check.tail || []).join('  ')}`)
-        if (onSaved) onSaved()
-      })
-      .catch(err => setNote(String(err && err.message ? err.message : err)))
+  function ask() {
+    const request = text.trim()
+    if (request.length < 4) return
+    const send = (typeof window !== 'undefined' && window.hermes && window.hermes.send)
+      ? window.hermes.send.bind(window.hermes)
+      : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
+    if (!send) {
+      setNote('this app build cannot reach the agent — ask in chat instead')
+      return
+    }
+    send(
+      `Change the generated plugin "${name}" in ~/.hermes/lazy-plugin/created/${name}/. ` +
+      `Request: ${request}. Load the lazy-plugin-builder skill, read the files before editing, ` +
+      `keep plugin.yaml and __init__.py in step, then run: hermes plugins validate ` +
+      `~/.hermes/lazy-plugin/created/${name}`
+    )
+    setText('')
+    setSent(true)
+    setNote('handed to the agent — it will read the bundle, edit it and re-validate')
+    if (onSaved) onSaved()
   }
 
   return jsxs('div', {
     className: 'mt-1 flex flex-col gap-1.5 rounded p-2',
     style: { background: 'var(--ui-bg-tertiary)' },
     children: [
-      jsxs('div', {
-        className: 'flex items-center gap-1.5',
-        children: [
-          jsx('select', {
-            value: path,
-            onChange: event => open(event.target.value),
-            className: 'min-w-0 flex-1 rounded border bg-transparent px-1 py-0.5 font-mono text-[0.6rem] text-(--ui-text-secondary)',
-            style: { borderColor: 'var(--ui-stroke-tertiary)' },
-            children: files.map(file => jsx('option', { value: file.path, children: file.path }, file.path))
-          }),
-          jsx(TileButton, { onClick: save, disabled: !dirty, primary: dirty, children: dirty ? 'save' : 'saved' })
-        ]
+      jsx('div', {
+        className: 'text-[0.58rem] uppercase tracking-wide text-(--ui-text-quaternary)',
+        children: 'ask for a change'
       }),
-      jsx('textarea', {
-        value: content,
-        onChange: event => { setContent(event.target.value); setDirty(true) },
-        spellCheck: false,
-        rows: 12,
-        className: 'w-full resize-y rounded border bg-transparent p-1.5 font-mono text-[0.6rem] leading-[1.45] text-foreground outline-none',
-        style: { borderColor: 'var(--ui-stroke-tertiary)' }
+      jsxs('div', {
+        className: 'flex items-end gap-1.5',
+        children: [
+          jsx('textarea', {
+            value: text,
+            onChange: event => setText(event.target.value),
+            rows: 2,
+            placeholder: 'make the price ceiling $700, and say which listing won',
+            className: 'min-w-0 flex-1 resize-y rounded border bg-transparent p-1.5 text-[0.68rem] text-foreground outline-none',
+            style: { borderColor: 'var(--ui-stroke-tertiary)' }
+          }),
+          jsx(TileButton, {
+            onClick: ask,
+            disabled: text.trim().length < 4,
+            primary: text.trim().length >= 4,
+            children: 'send'
+          })
+        ]
       }),
       jsx('div', {
         className: 'text-[0.58rem] text-(--ui-text-quaternary)',
-        children: note || saved || (dirty ? 'unsaved changes' : 'edits are written straight to the outbox bundle')
+        children: note || (sent ? 'sent' : 'plain English — the agent edits the files and re-validates')
       })
     ]
   })
@@ -782,7 +863,7 @@ function PluginTile({ plugin, onChanged }) {
             : null
         ]
       }),
-      editing ? jsx(FileEditor, { name: plugin.name, onSaved: onChanged }) : null
+      editing ? jsx(ChatEdit, { name: plugin.name, onSaved: onChanged }) : null
     ]
   })
 }
