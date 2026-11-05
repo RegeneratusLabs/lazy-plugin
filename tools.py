@@ -94,15 +94,24 @@ def _load_sibling(name: str, filename: str):
 def handle_backfill(params: Optional[dict] = None, **kwargs: Any) -> str:
     params = params or {}
     try:
-        days = max(1, min(3650, int(params.get("days") or 90)))
+        days = max(1, min(3650, int(params.get("days") or 365)))
         max_sessions = max(1, min(5000, int(params.get("max_sessions") or 200)))
     except (TypeError, ValueError):
-        days, max_sessions = 90, 200
+        days, max_sessions = 365, 200
+    source = str(params.get("source") or "auto").lower()
     try:
-        history = _load_sibling("history", "history.py")
-        return json.dumps(history.backfill(days=days, max_sessions=max_sessions))
+        out = {}
+        if source in ("auto", "statedb", "db"):
+            statedb = _load_sibling("statedb", "statedb.py")
+            out["statedb"] = statedb.mine(days=days)
+            if out["statedb"].get("available"):
+                return json.dumps(out)
+        if source in ("auto", "jsonl", "sessions"):
+            history = _load_sibling("history", "history.py")
+            out["jsonl"] = history.backfill(days=days, max_sessions=max_sessions)
+        return json.dumps(out)
     except Exception as exc:
-        return _err(exc, "session transcripts unreadable; live hooks still record from now on")
+        return _err(exc, "history unreadable; live hooks still record from now on")
 
 
 HANDLERS = {

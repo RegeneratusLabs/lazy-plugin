@@ -68,7 +68,10 @@ BACKFILL = {
             "days": {"type": "integer", "minimum": 1, "maximum": 3650,
                      "description": "How far back to look (default 90)."},
             "max_sessions": {"type": "integer", "minimum": 1, "maximum": 5000,
-                             "description": "Most recent transcripts to read (default 200)."},
+                             "description": "Most recent JSONL transcripts to read (default 200)."},
+            "source": {"type": "string", "enum": ["auto", "statedb", "jsonl"],
+                       "description": "auto (default) prefers state.db and falls back to JSONL; "
+                                      "statedb gives real timestamps and ~16x the records."},
         },
         "required": [],
     },

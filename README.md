@@ -9,24 +9,35 @@ calls actually produced. Then it puts a catalog plugin next to each one that alr
 Read-only. No LLM in the matching path. Never installs anything.
 
 ```
-25 capability gaps from real tool calls (57 occurrences, 25 mined from transcripts)
+108 things the agent reached for and did not have · 427 occurrences
+140-day field: 56 active days · peak 26/day · source: state.db
 
-  gap pkg:pandas               ×9   cmd_not_found   backfill
-  gap pkg:markdown             ×7   cmd_not_found   backfill
-  gap pkg:weasyprint           ×5   cmd_not_found   backfill
-  gap cmd:pandoc               ×3   cmd_not_found   backfill
-  gap pkg:youtube_transcript_api ×3 cmd_not_found   backfill
+  pkg:yaml        ×34   7 sessions
+  cmd:sqlite3     ×31  19 sessions
+  pkg:pip         ×16  16 sessions
+  cmd:docker       ×3   3 sessions
 
-4 of 199 skills also overlap a catalog plugin (1204 lines, 3 not installed)
-
-  oauth-local-server-flow  -> tidal          hosts:tidal
-  ethics-filter            -> ethics-filter  commands:ethics-filter  [installed]
-  hermes-band              -> hermes-band    commands:hermes-band
-  spotify                  -> spotify        hosts:spotify
+4 of 200 skills also overlap a catalog plugin (3 not installed)
 ```
 
-That output is real, from a 199-skill profile against the live 976-entry catalog, with 99 session
-transcripts (4,892 tool calls) mined in 1.7 seconds.
+## Visual: the capability field
+
+A native desktop page (`desktop/plugin.js`, no build step) with a sidebar entry, a palette command,
+and a statusbar chip that reads `108 gaps`.
+
+```
+Mon |    .  : .  =.  .:|        ← one cell per day, 13px, shaded by
+Tue |.   -      :=.  . |          event count; hover = date + count
+Wed |    .     +  .-   |
+Thu |   .       =  @=  |        @ = peak day (26 gaps)
+Fri |     . .  =:  .:: |
+```
+
+Below the field: four stats (events, active days, distinct things lacking, sources) and the ranked
+list of what keeps going missing, each row tagged with where it was measured.
+
+The field is the honest part: it is drawn from real event timestamps in `state.db`, so a quiet week
+looks quiet.
 
 ## Why this isn't a skill
 

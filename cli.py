@@ -60,8 +60,12 @@ def setup(subparser) -> None:
     gaps.add_argument("--limit", type=int, default=20)
     sub.add_parser("refresh", help="Re-fetch the catalog and rebuild the index")
     bf = sub.add_parser("backfill", help="Mine past session transcripts for gaps")
-    bf.add_argument("--days", type=int, default=90)
+    bf.add_argument("--days", type=int, default=365)
     bf.add_argument("--max-sessions", type=int, default=200)
+    bf.add_argument("--source", default="auto", choices=["auto", "statedb", "jsonl"])
+    fd = sub.add_parser("field", help="Per-day gap counts (the heatmap data)")
+    fd.add_argument("--days", type=int, default=140)
+    fd.add_argument("--json", action="store_true")
     exp = sub.add_parser("explain", help="Show the evidence behind one match or gap")
     exp.add_argument("target")
 
@@ -88,10 +92,37 @@ def run(args) -> int:
         return 0
 
     if cmd == "backfill":
-        history = _load("history", "history.py")
-        print(json.dumps(history.backfill(days=getattr(args, "days", 90) or 90,
-                                          max_sessions=getattr(args, "max_sessions", 200) or 200),
-                         indent=2))
+        out: dict = {}
+        source = getattr(args, "source", "auto") or "auto"
+        days = getattr(args, "days", 365) or 365
+        sessions = getattr(args, "max_sessions", 200) or 200
+        if source in ("auto", "statedb"):
+            out["statedb"] = _load("statedb", "statedb.py").mine(days=days)
+            if out["statedb"].get("available") and source == "auto":
+                print(json.dumps(out, indent=2))
+                return 0
+        if source in ("auto", "jsonl"):
+            out["jsonl"] = _load("history", "history.py").backfill(days=days, max_sessions=sessions)
+        print(json.dumps(out, indent=2))
+        return 0
+
+    if cmd == "field":
+        data = core.field(days=getattr(args, "days", 140) or 140)
+        if getattr(args, "json", False):
+            print(json.dumps(data))
+            return 0
+        print(f"{data['total']} gap events across {data['active_days']} active days "
+              f"{data['start']} → {data['end']} (max {data['max']}/day)")
+        week = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+        # 20 weeks, one row per weekday, column per week
+        cells = data["cells"]
+        cols = [cells[i:i + 7] for i in range(0, len(cells), 7)]
+        peak = max(1, data["max"])
+        shade = " .:-=+*#%@"
+        for wd in range(7):
+            row = "".join(shade[min(9, int((col[wd]["count"] / peak) * 9))] if wd < len(col) else " "
+                          for col in cols)
+            print(f"  {week[wd]} |{row}|")
         return 0
 
     if cmd == "explain":

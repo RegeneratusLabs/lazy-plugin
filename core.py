@@ -351,20 +351,20 @@ def _db() -> sqlite3.Connection:
 
 
 def record_gap(kind: str, signature: str, *, tool: str = "", snippet: str = "",
-               session_id: str = "", source: str = "live") -> bool:
+               session_id: str = "", source: str = "live", ts: Optional[float] = None) -> bool:
     import hashlib
 
     signature = (signature or "").strip()[:120]
     if not signature:
         return False
     gid = hashlib.sha1(f"{kind}|{signature}|{session_id}".encode("utf-8")).hexdigest()[:16]
-    now = time.time()
+    when = float(ts) if ts else time.time()
     with _db() as conn:
         conn.execute(
             """INSERT INTO gaps (id, kind, signature, tool, snippet, session_id, ts, seen, source)
                VALUES (?,?,?,?,?,?,?,1,?)
                ON CONFLICT(id) DO UPDATE SET seen = seen + 1, ts = MAX(ts, excluded.ts)""",
-            (gid, kind, signature, tool[:80], snippet[:120], session_id[:64], now, source))
+            (gid, kind, signature, tool[:80], snippet[:120], session_id[:64], when, source))
     return True
 
 
@@ -392,7 +392,7 @@ def gaps(limit: int = 20) -> dict:
 
 
 def prune_gaps() -> None:
-    """Live rows age out; backfilled rows are history and only lose to the row cap."""
+    """Live rows age out; mined history is not recent noise and only loses to the row cap."""
     try:
         with _db() as conn:
             cutoff = time.time() - GAP_RETENTION_DAYS * 86400
@@ -402,6 +402,89 @@ def prune_gaps() -> None:
                 "(SELECT id FROM gaps ORDER BY ts DESC LIMIT ?)", (GAP_MAX_ROWS,))
     except Exception:
         pass
+
+
+def record_gaps_bulk(rows) -> int:
+    """Same upsert as record_gap, one connection. 428 events took 56s one-at-a-time; this is <1s."""
+    import hashlib
+
+    prepared = []
+    for kind, signature, tool, snippet, session_id, ts, source in rows:
+        sig = (signature or "").strip()[:120]
+        if not sig:
+            continue
+        gid = hashlib.sha1(f"{kind}|{sig}|{(session_id or '')}".encode("utf-8")).hexdigest()[:16]
+        prepared.append((gid, kind, sig, (tool or "")[:80], (snippet or "")[:120],
+                         (session_id or "")[:64], float(ts) if ts else time.time(), source))
+    if not prepared:
+        return 0
+    with _db() as conn:
+        conn.executemany(
+            """INSERT INTO gaps (id, kind, signature, tool, snippet, session_id, ts, seen, source)
+               VALUES (?,?,?,?,?,?,?,1,?)
+               ON CONFLICT(id) DO UPDATE SET seen = seen + 1, ts = MAX(ts, excluded.ts)""",
+            prepared)
+    return len(prepared)
+
+
+def clear_mined() -> int:
+    """Mined history is one dataset: re-mining from either source replaces it, never stacks."""
+    try:
+        with _db() as conn:
+            n = conn.execute("SELECT COUNT(*) FROM gaps WHERE source IN ('backfill','statedb')").fetchone()[0]
+            conn.execute("DELETE FROM gaps WHERE source IN ('backfill','statedb')")
+            return int(n or 0)
+    except Exception:
+        return 0
+
+
+def field(days: int = 140, rows_by_weekday: bool = True) -> dict:
+    """Per-day gap counts for the heatmap: real event times, zero-filled, newest day last."""
+    import datetime as _dt
+
+    days = max(7, min(730, days))
+    today = _dt.date.today()
+    start = today - _dt.timedelta(days=days - 1)
+    try:
+        with _db() as conn:
+            rows = conn.execute(
+                "SELECT ts, seen FROM gaps WHERE ts >= ?", (time.mktime(start.timetuple()),)).fetchall()
+    except Exception:
+        rows = []
+
+    counts: Dict[str, int] = defaultdict(int)
+    for ts, seen in rows:
+        try:
+            day = _dt.datetime.fromtimestamp(float(ts)).date()
+        except Exception:
+            continue
+        if day < start:
+            continue
+        counts[day.isoformat()] += int(seen or 1)
+
+    cells = []
+    for i in range(days):
+        day = start + _dt.timedelta(days=i)
+        cells.append({"date": day.isoformat(), "count": counts.get(day.isoformat(), 0),
+                      "weekday": day.weekday()})
+    return {"start": start.isoformat(), "end": today.isoformat(), "days": days,
+            "cells": cells,
+            "active_days": sum(1 for c in cells if c["count"]),
+            "total": sum(c["count"] for c in cells),
+            "max": max((c["count"] for c in cells), default=0)}
+
+
+def sources() -> dict:
+    """Where the recorded gaps came from, so the UI can label mined history as mined."""
+    out: Dict[str, int] = {}
+    try:
+        with _db() as conn:
+            for source, n in conn.execute(
+                    "SELECT COALESCE(source,'live'), COUNT(DISTINCT signature) FROM gaps GROUP BY 1"):
+                out[source or "live"] = n
+    except Exception:
+        pass
+    return out
 
 
 # ---------------------------------------------------------------- report
@@ -473,6 +556,8 @@ def build_report(format: str = "summary", min_match: int = 1) -> dict:
         "matches": matches,
         "gap_answers": answers,
         "gaps": gap_data,
+        "field": field(140),
+        "sources": sources(),
     }
     if format == "summary":
         report["matches"] = matches[:5]
