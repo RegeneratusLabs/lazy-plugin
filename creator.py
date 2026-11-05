@@ -446,6 +446,38 @@ ANSWER_KINDS = {"fetch a url": "http", "read or write a file": "file",
                 "run a command": "command", "just scaffold it": "stub"}
 
 
+def answers_from_idea(idea: str) -> dict:
+    """Best-effort questionnaire answers from one sentence.
+
+    The web dashboard and mobile have no agent channel, so a description alone has nowhere to go.
+    Rather than dead-end, parse what is parseable and let the user fix the rest in the form.
+    """
+    text = _clean(idea, 300)
+    # "I want a lazy cat finder" names a plugin "lazy-cat-finder", not "i-want-a-lazy-cat"
+    text = re.sub(r"^(i want|i'd like|i would like|make me|build me|create|can you|please)\s+"
+                  r"(a|an|the|to)?\s*", "", text, flags=re.I) or text
+    low = text.lower()
+    url = re.search(r"https?://\S+", text)
+    if any(word in low for word in ("run ", "shell", "command", "systemctl", "git ")):
+        action = "run a command"
+    elif any(word in low for word in ("file", "csv", "json", "folder", "path", "save", "read ")):
+        action = "read or write a file"
+    elif url or any(word in low for word in ("fetch", "api", "web", "http", "download", "search",
+                                              "find", "picture", "image", "photo", "recommend")):
+        action = "fetch a URL"
+    else:
+        action = "just scaffold it"
+    return {
+        "purpose": text,
+        "action": action,
+        "target": url.group(0) if url else "",
+        "returns": "",
+        "trigger": "after every session" if "every" in low or "daily" in low or "each" in low else "when I ask",
+        "secret": "",
+        "category": "web" if action == "fetch a URL" else "tools",
+    }
+
+
 def spec_from_answers(answers: dict) -> dict:
     """Six answers in, one spec out. Deterministic, offline, and it always validates.
 

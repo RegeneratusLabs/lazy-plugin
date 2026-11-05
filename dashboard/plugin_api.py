@@ -251,6 +251,15 @@ async def create_from_answers(payload: dict | None = None):
     return await asyncio.to_thread(creator.create, drafted["spec"])
 
 
+@router.post("/create/prefill")
+async def prefill_answers(payload: dict | None = None):
+    """A sentence in, questionnaire answers out. No model, so it works on any surface."""
+    payload = payload or {}
+    idea = str(payload.get("idea") or "")
+    creator = _creator_mod()
+    return {"ok": True, "answers": creator.answers_from_idea(idea)}
+
+
 @router.get("/questions")
 async def questions():
     """The questionnaire is data, so the page cannot drift from the spec it feeds."""

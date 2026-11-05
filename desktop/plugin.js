@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-quiz-6'
+const BUILD = 'cat-quiz-7'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -43,6 +43,7 @@ function makeApi(ctx) {
     publish: (name, openPr) => rest('/created/publish',
       { method: 'POST', body: { name, open_pr: !!openPr } }),
     questions: () => rest('/questions'),
+    prefill: idea => rest('/create/prefill', { method: 'POST', body: { idea } }),
     answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
@@ -330,7 +331,7 @@ function Built({ out }) {
   })
 }
 
-function Questionnaire({ onResult }) {
+function Questionnaire({ onResult, initial }) {
   const [fields, setFields] = useState([])
   const [answers, setAnswers] = useState({})
   const [busy, setBusy] = useState(false)
@@ -349,6 +350,10 @@ function Questionnaire({ onResult }) {
       .catch(err => setNote(String(err && err.message ? err.message : err)))
     return () => { live = false }
   }, [])
+
+  useEffect(() => {
+    if (initial && initial.purpose) setAnswers(prev => ({ ...prev, ...initial }))
+  }, [initial])
 
   const ready = (answers.purpose || '').trim().length >= 10
 
@@ -437,6 +442,7 @@ function CreatorPanel() {
   const [stage, setStage] = useState('')
   const [out, setOut] = useState(null)
   const [error, setError] = useState('')
+  const [prefill, setPrefill] = useState(null)
 
   useEffect(() => {
     let live = true
@@ -450,6 +456,7 @@ function CreatorPanel() {
     return () => { live = false }
   }, [])
 
+  CreatorPanel.__setPrefill = setPrefill
   const options = kind === 'skill' ? sources.skills : sources.cron
   const canBuild = !busy && (idea.trim().length >= 10 || !!sourceName)
 
@@ -500,7 +507,18 @@ function CreatorPanel() {
       ? window.hermes.send.bind(window.hermes)
       : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
     if (!send) {
-      fail('this app build cannot hand work to the agent — use `lazyplugin_create` in chat instead')
+      // web dashboard and mobile have no agent channel: turn the sentence into answers instead
+      CreatorPanel.__api
+        .prefill(idea.trim())
+        .then(payload => {
+          setBusy(false)
+          setStage('')
+          setError('this surface has no agent channel, so your sentence is now the form above — check it and press make it')
+          if (CreatorPanel.__setPrefill && payload && payload.answers) {
+            CreatorPanel.__setPrefill(payload.answers)
+          }
+        })
+        .catch(err => fail(String(err && err.message ? err.message : err)))
       return
     }
     try {
@@ -593,7 +611,7 @@ function CreatorPanel() {
           })
         ]
       }),
-      jsx(Questionnaire, { onResult: setOut }),
+      jsx(Questionnaire, { onResult: setOut, initial: prefill }),
       jsx('div', { className: 'mt-1 text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: 'or describe it' }),
       jsx('textarea', {
         value: idea,
@@ -667,6 +685,7 @@ function CreatorPanel() {
 CreatorPanel.__api = null
 CreatorPanel.__onBuilt = null
 CreatorPanel.__seen = []
+CreatorPanel.__setPrefill = null
 
 function Badge({ tone = 'quiet', children }) {
   const styles = {
