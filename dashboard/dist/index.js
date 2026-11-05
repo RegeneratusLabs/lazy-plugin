@@ -1,4 +1,4 @@
-/* Scout — lazy-plugin dashboard tab. Plain IIFE, no build step. */
+/* Lazy Plugin — dashboard tab. Plain IIFE, no build step. */
 (function () {
   "use strict";
 
@@ -81,7 +81,7 @@
       }));
   }
 
-  function Scout() {
+  function LazyPluginTab() {
     var r = useState(null), data = r[0], setData = r[1];
     var e = useState(""), err = e[0], setErr = e[1];
     var l = useState(false), loading = l[0], setLoading = l[1];
@@ -106,7 +106,7 @@
 
     if (err) {
       return h("div", { className: "p-4 text-sm" },
-        h("p", { className: "font-medium" }, "Scout could not read the report"),
+        h("p", { className: "font-medium" }, "Lazy Plugin could not read the report"),
         h("p", { className: "mt-1 text-muted-foreground" }, err),
         h("button", { className: "mt-3 rounded px-3 py-1 text-sm", style: { border: "1px solid var(--border)" }, onClick: load }, "Retry"));
     }
@@ -131,5 +131,5 @@
           loading ? "Refreshing…" : "Refresh catalog")));
   }
 
-  window.__HERMES_PLUGINS__.register("lazy-plugin", Scout);
+  window.__HERMES_PLUGINS__.register("lazy-plugin", LazyPluginTab);
 })();

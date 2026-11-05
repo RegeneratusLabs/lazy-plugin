@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-tiles-3'
+const BUILD = 'cat-tiles-4'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -42,6 +42,9 @@ function makeApi(ctx) {
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
     publish: (name, openPr) => rest('/created/publish',
       { method: 'POST', body: { name, open_pr: !!openPr } }),
+    files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
+    readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
+    saveFile: (name, path, content) => rest('/created/file', { method: 'POST', body: { name, path, content } }),
     share: name => rest('/created/share', { method: 'POST', body: { name } })
   }
 }
@@ -542,9 +545,93 @@ function TileButton({ onClick, disabled, primary, children }) {
   })
 }
 
+function FileEditor({ name, onSaved }) {
+  const [files, setFiles] = useState([])
+  const [path, setPath] = useState('')
+  const [content, setContent] = useState('')
+  const [saved, setSaved] = useState('')
+  const [note, setNote] = useState('')
+  const [dirty, setDirty] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    CreatorPanel.__api
+      .files(name)
+      .then(payload => {
+        if (!live) return
+        const list = (payload && payload.files) || []
+        setFiles(list)
+        const first = list.find(f => f.path === 'plugin.yaml') || list[0]
+        if (first) open(first.path)
+      })
+      .catch(err => { if (live) setNote(String(err && err.message ? err.message : err)) })
+    return () => { live = false }
+  }, [name])
+
+  function open(target) {
+    setPath(target)
+    setDirty(false)
+    setSaved('')
+    CreatorPanel.__api
+      .readFile(name, target)
+      .then(payload => {
+        setContent(payload && payload.ok ? payload.content : '')
+        if (payload && !payload.ok) setNote(payload.error || 'could not read that file')
+        else setNote('')
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+  }
+
+  function save() {
+    setNote('')
+    CreatorPanel.__api
+      .saveFile(name, path, content)
+      .then(result => {
+        setDirty(false)
+        const check = (result && result.validation) || {}
+        setSaved(check.ok ? 'saved · still validates' : `saved · ${(check.tail || []).join('  ')}`)
+        if (onSaved) onSaved()
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+  }
+
+  return jsxs('div', {
+    className: 'mt-1 flex flex-col gap-1.5 rounded p-2',
+    style: { background: 'var(--ui-bg-tertiary)' },
+    children: [
+      jsxs('div', {
+        className: 'flex items-center gap-1.5',
+        children: [
+          jsx('select', {
+            value: path,
+            onChange: event => open(event.target.value),
+            className: 'min-w-0 flex-1 rounded border bg-transparent px-1 py-0.5 font-mono text-[0.6rem] text-(--ui-text-secondary)',
+            style: { borderColor: 'var(--ui-stroke-tertiary)' },
+            children: files.map(file => jsx('option', { value: file.path, children: file.path }, file.path))
+          }),
+          jsx(TileButton, { onClick: save, disabled: !dirty, primary: dirty, children: dirty ? 'save' : 'saved' })
+        ]
+      }),
+      jsx('textarea', {
+        value: content,
+        onChange: event => { setContent(event.target.value); setDirty(true) },
+        spellCheck: false,
+        rows: 12,
+        className: 'w-full resize-y rounded border bg-transparent p-1.5 font-mono text-[0.6rem] leading-[1.45] text-foreground outline-none',
+        style: { borderColor: 'var(--ui-stroke-tertiary)' }
+      }),
+      jsx('div', {
+        className: 'text-[0.58rem] text-(--ui-text-quaternary)',
+        children: note || saved || (dirty ? 'unsaved changes' : 'edits are written straight to the outbox bundle')
+      })
+    ]
+  })
+}
+
 function PluginTile({ plugin, onChanged }) {
   const [busy, setBusy] = useState('')
   const [note, setNote] = useState('')
+  const [editing, setEditing] = useState(false)
 
   function install() {
     setBusy('install')
@@ -625,7 +712,14 @@ function PluginTile({ plugin, onChanged }) {
           jsx(TileButton, {
             onClick: publish,
             disabled: !!busy || plugin.validated === false,
-            children: busy === 'publish' ? 'publishing…' : plugin.published ? 'update pin' : 'publish'
+            title: plugin.published
+              ? 'commit the current files to the same repo and repoint the catalog entry at the new commit'
+              : 'create a public repo, pin the commit, write the catalog entry',
+            children: busy === 'publish' ? 'publishing…' : plugin.published ? 'republish' : 'publish'
+          }),
+          jsx(TileButton, {
+            onClick: () => setEditing(value => !value),
+            children: editing ? 'close' : 'edit'
           }),
           plugin.published
             ? jsx(ExtLink, { href: plugin.published.repo, children: 'repo ↗' })
@@ -634,7 +728,8 @@ function PluginTile({ plugin, onChanged }) {
             ? jsx('span', { className: 'truncate text-[0.58rem] text-(--ui-text-quaternary)', children: note })
             : null
         ]
-      })
+      }),
+      editing ? jsx(FileEditor, { name: plugin.name, onSaved: onChanged }) : null
     ]
   })
 }
@@ -723,7 +818,7 @@ export default {
       id: 'nav',
       area: SIDEBAR_NAV_AREA,
       order: 86,
-      data: { path: ROUTE, label: '🐱 Lazy Cat', codicon: 'wand' }
+      data: { path: ROUTE, label: 'Lazy Plugin', codicon: 'wand' }
     })
     ctx.register({
       id: 'open',

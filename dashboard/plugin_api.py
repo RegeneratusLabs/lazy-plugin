@@ -1,4 +1,4 @@
-"""Dashboard backend for the Scout tab. Routes mount at /api/plugins/lazy-plugin/.
+"""Dashboard backend for the Lazy Plugin tab. Routes mount at /api/plugins/lazy-plugin/.
 
 Handlers are async and push blocking work to a thread: the dashboard's event loop also serves
 chat and Desktop, so a synchronous catalog scan here would stall unrelated requests.
@@ -224,6 +224,90 @@ def _write_validation_cache(core, cache: dict) -> None:
         path.write_text(json.dumps(cache, indent=2), encoding="utf-8")
     except Exception:
         pass
+
+
+EDITABLE = {".py", ".md", ".yaml", ".yml", ".json", ".txt", ".js", ".toml", ".cfg", ".ini"}
+MAX_EDIT_BYTES = 262_144
+
+
+def _bundle(name: str):
+    core = _core()
+    bundle = (core.state_dir() / "created" / name).resolve()
+    root = (core.state_dir() / "created").resolve()
+    if root not in bundle.parents:
+        return None
+    return bundle if (bundle / "plugin.yaml").exists() else None
+
+
+@router.get("/created/files")
+async def created_files(name: str = ""):
+    return await asyncio.to_thread(_created_files, name)
+
+
+def _created_files(name: str) -> dict:
+    bundle = _bundle(name)
+    if bundle is None:
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    files = []
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_file() or path.suffix not in EDITABLE:
+            continue
+        if ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        files.append({"path": str(path.relative_to(bundle)), "size": path.stat().st_size})
+    return {"ok": True, "name": name, "dir": str(bundle), "files": files}
+
+
+@router.get("/created/file")
+async def created_file(name: str = "", path: str = ""):
+    return await asyncio.to_thread(_read_created_file, name, path)
+
+
+def _read_created_file(name: str, path: str) -> dict:
+    bundle = _bundle(name)
+    if bundle is None:
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    target = (bundle / path).resolve()
+    if bundle != target and bundle not in target.parents:
+        return {"ok": False, "error": "that path is outside the plugin"}
+    if not target.is_file():
+        return {"ok": False, "error": f"{path} is not a file"}
+    if target.suffix not in EDITABLE:
+        return {"ok": False, "error": f"{path} is not editable here"}
+    if target.stat().st_size > MAX_EDIT_BYTES:
+        return {"ok": False, "error": "file is too large to edit here"}
+    return {"ok": True, "name": name, "path": path,
+            "content": target.read_text(encoding="utf-8", errors="replace")}
+
+
+@router.post("/created/file")
+async def save_created_file(payload: dict | None = None):
+    """Write an edit back, then re-validate so the tile cannot claim a state it lost."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    path = str(payload.get("path") or "").strip()
+    content = payload.get("content")
+    if not isinstance(content, str):
+        return JSONResponse({"ok": False, "error": "content must be a string"}, status_code=400)
+    return await asyncio.to_thread(_write_created_file, name, path, content)
+
+
+def _write_created_file(name: str, path: str, content: str) -> dict:
+    bundle = _bundle(name)
+    if bundle is None:
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    target = (bundle / path).resolve()
+    if bundle != target and bundle not in target.parents:
+        return {"ok": False, "error": "that path is outside the plugin"}
+    if target.suffix not in EDITABLE:
+        return {"ok": False, "error": f"{path} is not editable here"}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    check = _creator_mod().validate_plugin(bundle)
+    return {"ok": True, "name": name, "path": path, "bytes": len(content.encode()),
+            "validation": {"ok": bool(check.get("ok")),
+                           "tail": [line for line in (check.get("tail") or []) if line.strip()][-4:]},
+            "validated": bool(check.get("ok"))}
 
 
 @router.post("/created/install")
