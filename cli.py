@@ -66,6 +66,9 @@ def setup(subparser) -> None:
     fd = sub.add_parser("field", help="Per-day gap counts (the heatmap data)")
     fd.add_argument("--days", type=int, default=140)
     fd.add_argument("--json", action="store_true")
+    rc = sub.add_parser("recommend", help="LLM pass: where a plugin would have replaced manual work")
+    rc.add_argument("--days", type=int, default=7)
+    rc.add_argument("--force", action="store_true")
     exp = sub.add_parser("explain", help="Show the evidence behind one match or gap")
     exp.add_argument("target")
 
@@ -123,6 +126,12 @@ def run(args) -> int:
             row = "".join(shade[min(9, int((col[wd]["count"] / peak) * 9))] if wd < len(col) else " "
                           for col in cols)
             print(f"  {week[wd]} |{row}|")
+        return 0
+
+    if cmd == "recommend":
+        tools = _load("tools", "tools.py")
+        print(tools.handle_recommend({"days": getattr(args, "days", 7),
+                                      "force": getattr(args, "force", False)}))
         return 0
 
     if cmd == "explain":

@@ -12,6 +12,7 @@ provides_tools:
   - pluginscout_refresh
   - pluginscout_explain
   - pluginscout_backfill
+  - pluginscout_recommend
 provides_hooks:
   - post_tool_call
   - on_skill_lifecycle

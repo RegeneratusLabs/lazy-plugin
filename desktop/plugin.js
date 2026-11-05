@@ -22,15 +22,32 @@ function parseMaybe(value) {
 }
 
 // ctx.rest hits this plugin's own backend namespace (/api/plugins/pluginscout). The fetch is a
-// fallback for a host where the scoped client is not wired.
-function makeLoader(ctx) {
-  return async function loadReport() {
+// fallback for a host where the scoped client is not wired or takes a different shape.
+function makeApi(ctx) {
+  async function rest(path, init) {
     if (ctx && typeof ctx.rest === 'function') {
-      return parseMaybe(await ctx.rest('/report?format=json'))
+      try {
+        const out = await ctx.rest(path, init)
+        const parsed = parseMaybe(out)
+        if (parsed !== null && parsed !== undefined) return parsed
+      } catch (err) {
+        // fall through to fetch
+      }
     }
-    const res = await fetch('/api/plugins/pluginscout/report?format=json', { credentials: 'same-origin' })
-    if (!res.ok) throw new Error(`report HTTP ${res.status}`)
+    const res = await fetch(`/api/plugins/pluginscout${path}`, {
+      credentials: 'same-origin',
+      ...(init || {}),
+      headers: { 'Content-Type': 'application/json', ...((init && init.headers) || {}) }
+    })
+    if (!res.ok) throw new Error(`${path} HTTP ${res.status}`)
     return res.json()
+  }
+
+  return {
+    report: () => rest('/report?format=json'),
+    recommend: (days, force) =>
+      rest('/recommend', { method: 'POST', body: JSON.stringify({ days, force: !!force }) }),
+    cached: days => rest(`/recommend?days=${days}`)
   }
 }
 
@@ -123,6 +140,183 @@ function GapRow({ gap, rank }) {
   })
 }
 
+// ---------- recommend panel (button one)
+
+const RANGES = [
+  { days: 7, label: '7 days' },
+  { days: 14, label: '14 days' },
+  { days: 30, label: '30 days' }
+]
+
+function Evidence({ item }) {
+  return jsxs('div', {
+    className: 'mt-1 border-l pl-2',
+    style: { borderColor: 'var(--ui-stroke-tertiary)' },
+    children: [
+      jsx('div', { className: 'font-mono text-[0.68rem] text-(--ui-text-tertiary)', children: `“${item.quote}”` }),
+      jsx('div', { className: 'text-[0.62rem] text-(--ui-text-quaternary)', children: `${item.date} · ${item.session_id}` })
+    ]
+  })
+}
+
+function RecCard({ rec }) {
+  const fix = rec.fix || {}
+  const fixLine =
+    fix.kind === 'install'
+      ? `hermes plugins install ${fix.plugin}`
+      : fix.kind === 'installed'
+        ? `${fix.plugin} is already installed`
+        : fix.kind === 'related'
+          ? fix.note
+          : 'no catalog plugin covers this — candidate for a contribution'
+  return jsxs('div', {
+    className: 'rounded border p-3',
+    style: { borderColor: 'var(--ui-stroke-tertiary)' },
+    children: [
+      jsxs('div', {
+        className: 'flex items-baseline justify-between gap-3',
+        children: [
+          jsx('div', { className: 'text-[0.82rem] font-medium text-foreground', children: rec.title }),
+          jsx('div', {
+            className: 'shrink-0 text-[0.62rem] uppercase tracking-wide text-(--ui-text-quaternary)',
+            children: rec.evidence_strength === 'recurring'
+              ? `${rec.occurrences} sessions`
+              : 'single session'
+          })
+        ]
+      }),
+      jsx('div', { className: 'mt-1 text-[0.74rem] text-(--ui-text-secondary)', children: rec.job }),
+      rec.why_plugin
+        ? jsx('div', { className: 'mt-1 text-[0.70rem] text-(--ui-text-tertiary)', children: rec.why_plugin })
+        : null,
+      jsx('div', { className: 'mt-2', children: (rec.evidence || []).map((e, i) => jsx(Evidence, { item: e }, i)) }),
+      jsx('div', {
+        className: 'mt-2 font-mono text-[0.68rem]',
+        style: { color: fix.kind === 'install' ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
+        children: fixLine
+      })
+    ]
+  })
+}
+
+function RecommendPanel() {
+  const [days, setDays] = useState(7)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let live = true
+    RecommendPanel.__api
+      .cached(days)
+      .then(payload => { if (live && payload && payload.cached) setResult(payload) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [days])
+
+  function run(force) {
+    setBusy(true)
+    setError('')
+    RecommendPanel.__api
+      .recommend(days, force)
+      .then(payload => { setResult(payload); if (payload && payload.ok === false) setError(payload.error || 'no result') })
+      .catch(err => setError(String(err && err.message ? err.message : err)))
+      .finally(() => setBusy(false))
+  }
+
+  const recs = (result && result.recommendations) || []
+  const dropped = (result && result.dropped) || []
+
+  return jsxs('div', {
+    className: 'rounded border p-3',
+    style: { borderColor: 'var(--ui-stroke-secondary)' },
+    children: [
+      jsxs('div', {
+        className: 'flex flex-wrap items-center justify-between gap-3',
+        children: [
+          jsxs('div', {
+            children: [
+              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Where a plugin would have saved you work' }),
+              jsx('div', {
+                className: 'mt-0.5 text-[0.68rem] text-(--ui-text-quaternary)',
+                children: 'reads your real sessions · every claim carries a quote from the log · nothing is installed'
+              })
+            ]
+          }),
+          jsxs('div', {
+            className: 'flex items-center gap-1',
+            children: [
+              ...RANGES.map(r =>
+                jsx('button', {
+                  key: r.days,
+                  onClick: () => setDays(r.days),
+                  className: 'rounded px-2 py-1 text-[0.68rem]',
+                  style: {
+                    border: '1px solid var(--ui-stroke-tertiary)',
+                    color: days === r.days ? 'var(--ui-text-primary)' : 'var(--ui-text-tertiary)',
+                    background: days === r.days ? 'var(--ui-bg-tertiary)' : 'transparent'
+                  },
+                  children: r.label
+                }, r.days)
+              ),
+              jsx('button', {
+                onClick: () => run(!!result),
+                disabled: busy,
+                className: 'ml-1 rounded px-2.5 py-1 text-[0.7rem] font-medium',
+                style: {
+                  background: 'var(--ui-accent)',
+                  color: 'var(--ui-bg-primary)',
+                  opacity: busy ? 0.6 : 1,
+                  cursor: busy ? 'default' : 'pointer'
+                },
+                children: busy ? 'Reading…' : result ? 'Recommend again' : 'Recommend me a plugin'
+              })
+            ]
+          })
+        ]
+      }),
+      error
+        ? jsxs('div', {
+            className: 'mt-3 rounded p-2 text-[0.7rem]',
+            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
+            children: [
+              jsx('div', { children: error }),
+              result && result.fallback
+                ? jsx('div', { className: 'mt-1 font-mono text-[0.66rem] text-(--ui-text-quaternary)', children: `ask the agent to run ${result.fallback}` })
+                : null
+            ]
+          })
+        : null,
+      recs.length
+        ? jsxs('div', {
+            className: 'mt-3 flex flex-col gap-2',
+            children: [
+              ...recs.map((rec, i) => jsx(RecCard, { rec }, i)),
+              jsxs('div', {
+                className: 'flex justify-between text-[0.62rem] text-(--ui-text-quaternary)',
+                children: [
+                  jsx('div', {
+                    children: `${result.stats.sessions} sessions · ${result.stats.tool_calls} tool calls · ${result.llm && result.llm.model ? result.llm.model : 'model'}${result.cached ? ' · cached' : ''}`
+                  }),
+                  jsx('div', {
+                    children: dropped.length
+                      ? `${dropped.length} suggestion${dropped.length === 1 ? '' : 's'} discarded — evidence not found in the log`
+                      : ''
+                  })
+                ]
+              })
+            ]
+          })
+        : null,
+      !recs.length && !error && !busy && result && result.ok === false && result.reason
+        ? jsx('div', { className: 'mt-2 text-[0.7rem] text-(--ui-text-tertiary)', children: result.reason })
+        : null
+    ]
+  })
+}
+
+RecommendPanel.__api = null
+
 // ---------- page
 
 function ScoutPage() {
@@ -131,7 +325,7 @@ function ScoutPage() {
 
   useEffect(() => {
     let live = true
-    ScoutPage.__load()
+    ScoutPage.__api.report()
       .then(payload => { if (live) setData(payload) })
       .catch(err => { if (live) setError(String(err && err.message ? err.message : err)) })
     return () => { live = false }
@@ -178,6 +372,7 @@ function ScoutPage() {
           jsx(Stat, { label: 'sources', value: String(Object.keys(sources).length), hint: Object.keys(sources).join(' · ') || 'none yet' })
         ]
       }),
+      jsx(RecommendPanel, {}),
       jsxs('div', {
         children: [
           jsx('div', { className: 'mb-2 text-sm font-medium text-foreground', children: 'What keeps going missing' }),
@@ -196,13 +391,13 @@ function ScoutPage() {
 }
 
 // The loader is injected at register() time, where ctx.rest exists.
-ScoutPage.__load = async () => { throw new Error('loader not wired') }
+ScoutPage.__api = null
 
 function ScoutChip() {
   const [count, setCount] = useState(null)
   useEffect(() => {
     let live = true
-    ScoutChip.__load()
+    ScoutChip.__api.report()
       .then(payload => { if (live) setCount(payload && payload.gaps ? payload.gaps.total : 0) })
       .catch(() => { if (live) setCount(null) })
     return () => { live = false }
@@ -215,15 +410,16 @@ function ScoutChip() {
   })
 }
 
-ScoutChip.__load = async () => { throw new Error('loader not wired') }
+ScoutChip.__api = null
 
 export default {
   id: ID,
   name: 'Scout',
   register(ctx) {
-    const load = makeLoader(ctx)
-    ScoutPage.__load = load
-    ScoutChip.__load = load
+    const api = makeApi(ctx)
+    ScoutPage.__api = api
+    ScoutChip.__api = api
+    RecommendPanel.__api = api
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: ROUTE }, render: () => jsx(ScoutPage, {}) })
     ctx.register({
       id: 'nav',

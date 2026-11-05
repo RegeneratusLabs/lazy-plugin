@@ -1,0 +1,180 @@
+<!doctype html><meta charset="utf-8"><title>Scout</title>
+<style>
+  :root {
+    --bg: #17181c; --bg2: #1e1f25; --bg3: #2a2c33;
+    --fg: #e8e9ed; --fg2: #a9adb8; --fg3: #7b8090; --fg4: #5d6272;
+    --stroke: #2f323b; --accent: #6ea8fe;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+    font-family: ui-sans-serif, -apple-system, "Segoe UI", Roboto, sans-serif; font-size:14px; }
+  .app { display:flex; min-height:100vh; }
+  .side { width:196px; background:var(--bg2); border-right:1px solid var(--stroke); padding:14px 10px; }
+  .side .brand { font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--fg4); padding:0 8px 12px; }
+  .side .item { display:flex; gap:8px; align-items:center; padding:6px 8px; border-radius:6px; color:var(--fg2); font-size:13px; }
+  .side .item.on { background:var(--bg3); color:var(--fg); }
+  .dot { width:6px; height:6px; border-radius:2px; background:var(--fg4); }
+  .side .item.on .dot { background:var(--accent); }
+  .main { flex:1; padding:22px 26px; }
+  h1 { font-size:13px; font-weight:600; margin:0; }
+  .sub { font-size:11px; color:var(--fg4); }
+  .head { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .field { display:flex; gap:10px; align-items:flex-start; }
+  .wd { width:26px; height:13px; line-height:13px; font-size:9px; color:var(--fg4); }
+  .grid { display:flex; gap:3px; }
+  .gcol { display:flex; flex-direction:column; gap:3px; }
+  .gcol .gapcell { width:13px; height:13px; border-radius:3px; }
+  .gcol .zero { background: color-mix(in srgb, var(--fg4) 22%, transparent); }
+  .gcol .empty { background: transparent; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:18px;
+            border:1px solid var(--stroke); border-radius:8px; padding:14px 16px; margin:20px 0 22px; }
+  .stat .label { font-size:10.5px; color:var(--fg4); }
+  .stat .value { font-size:19px; font-weight:600; margin-top:4px; line-height:1; }
+  .stat .hint { font-size:10.5px; color:var(--fg4); margin-top:6px; }
+  .section { font-size:13px; font-weight:600; margin-bottom:8px; }
+  .grow { display:flex; align-items:baseline; gap:12px; padding:7px 0; border-bottom:1px solid var(--stroke); }
+  .rank { width:20px; text-align:right; font-size:10.5px; color:var(--fg4); }
+  .count { width:38px; text-align:right; font-size:11.5px; color:var(--fg2); }
+  .sig { flex:1; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; }
+  .sess { font-size:10.5px; color:var(--fg4); }
+  .badge { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg3);
+            border:1px solid var(--stroke); border-radius:4px; padding:1px 5px; }
+  .foot { margin-top:18px; display:flex; justify-content:space-between; font-size:10.5px; color:var(--fg4); }
+  .status { border-top:1px solid var(--stroke); padding:5px 12px; display:flex; justify-content:flex-end; gap:14px;
+             font-size:11px; color:var(--fg3); background:var(--bg2); position:fixed; bottom:0; left:0; right:0; }
+  .status b { color:var(--fg2); font-weight:500; }
+
+  .rpanel { border:1px solid var(--stroke); border-radius:8px; padding:14px 16px; margin:0 0 22px; }
+  .rp-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
+  .rp-title { font-size:13px; font-weight:600; }
+  .rp-sub { font-size:10.5px; color:var(--fg4); margin-top:3px; }
+  .rp-ctl { display:flex; gap:4px; align-items:center; }
+  .rp-pill { border:1px solid var(--stroke); border-radius:5px; padding:4px 8px; font-size:10.5px; color:var(--fg3); }
+  .rp-pill.on { background:var(--bg3); color:var(--fg); }
+  .rp-btn { background:var(--accent); color:#14161b; border-radius:5px; padding:4px 10px; font-size:11px; font-weight:600; margin-left:4px; }
+  .rec { border:1px solid var(--stroke); border-radius:6px; padding:11px 12px; margin-top:9px; }
+  .rec-top { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+  .rec-title { font-size:12.5px; font-weight:600; }
+  .rec-badge { font-size:9px; text-transform:uppercase; letter-spacing:.06em; color:var(--fg4); }
+  .rec-job { font-size:11px; color:var(--fg2); margin-top:4px; }
+  .rec-why { font-size:10.5px; color:var(--fg3); margin-top:3px; }
+  .ev { border-left:2px solid var(--stroke); padding-left:8px; margin-top:7px; }
+  .ev-q { font-family: ui-monospace, Menlo, monospace; font-size:10.5px; color:var(--fg3); }
+  .ev-m { font-size:9.5px; color:var(--fg4); margin-top:2px; }
+  .rec-fix { font-family: ui-monospace, Menlo, monospace; font-size:10.5px; margin-top:8px; }
+  .rec-fix.install { color:var(--accent); }
+  .rec-fix.other { color:var(--fg3); }
+  .rp-foot { display:flex; justify-content:space-between; font-size:9.5px; color:var(--fg4); margin-top:9px; }
+
+</style>
+<div class="app">
+  <div class="side">
+    <div class="brand">Hermes</div>
+    <div class="item"><span class="dot"></span>Chat</div>
+    <div class="item"><span class="dot"></span>Sessions</div>
+    <div class="item"><span class="dot"></span>Skills</div>
+    <div class="item on"><span class="dot"></span>Scout</div>
+    <div class="item"><span class="dot"></span>Cron</div>
+  </div>
+  <div class="main">
+    <div class="head">
+      <h1>Capability field</h1>
+      <div class="sub">2026-06-19 → 2026-11-05 · last 140 days</div>
+    </div>
+    <div class="field">
+      <div style="display:flex;flex-direction:column;gap:3px"><div class="wd">Mon</div><div class="wd"></div><div class="wd">Wed</div><div class="wd"></div><div class="wd">Fri</div><div class="wd"></div><div class="wd">Sun</div></div>
+      <div class="grid"><div class="gcol"><div class="gapcell empty"></div><div class="gapcell empty"></div><div class="gapcell empty"></div><div class="gapcell empty"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-19 — 1 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-20 — 3 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-21 — 1 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-22 — 1 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-23 — 1 gaps"></div><div class="gapcell zero" title="2026-06-24 — 0 gaps"></div><div class="gapcell zero" title="2026-06-25 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-26 — 2 gaps"></div><div class="gapcell zero" title="2026-06-27 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-06-28 — 1 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-06-29 — 0 gaps"></div><div class="gapcell zero" title="2026-06-30 — 0 gaps"></div><div class="gapcell zero" title="2026-07-01 — 0 gaps"></div><div class="gapcell zero" title="2026-07-02 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-03 — 1 gaps"></div><div class="gapcell zero" title="2026-07-04 — 0 gaps"></div><div class="gapcell zero" title="2026-07-05 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-07-06 — 0 gaps"></div><div class="gapcell zero" title="2026-07-07 — 0 gaps"></div><div class="gapcell zero" title="2026-07-08 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-09 — 1 gaps"></div><div class="gapcell zero" title="2026-07-10 — 0 gaps"></div><div class="gapcell zero" title="2026-07-11 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-12 — 1 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-07-13 — 0 gaps"></div><div class="gapcell zero" title="2026-07-14 — 0 gaps"></div><div class="gapcell zero" title="2026-07-15 — 0 gaps"></div><div class="gapcell zero" title="2026-07-16 — 0 gaps"></div><div class="gapcell zero" title="2026-07-17 — 0 gaps"></div><div class="gapcell zero" title="2026-07-18 — 0 gaps"></div><div class="gapcell zero" title="2026-07-19 — 0 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-07-20 — 5 gaps"></div><div class="gapcell zero" title="2026-07-21 — 0 gaps"></div><div class="gapcell zero" title="2026-07-22 — 0 gaps"></div><div class="gapcell zero" title="2026-07-23 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-24 — 3 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-25 — 3 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-26 — 3 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-07-27 — 1 gaps"></div><div class="gapcell zero" title="2026-07-28 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-07-29 — 6 gaps"></div><div class="gapcell zero" title="2026-07-30 — 0 gaps"></div><div class="gapcell zero" title="2026-07-31 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-01 — 1 gaps"></div><div class="gapcell zero" title="2026-08-02 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-08-03 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-04 — 3 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-05 — 1 gaps"></div><div class="gapcell zero" title="2026-08-06 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-07 — 4 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-08-08 — 9 gaps"></div><div class="gapcell zero" title="2026-08-09 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-08-10 — 0 gaps"></div><div class="gapcell zero" title="2026-08-11 — 0 gaps"></div><div class="gapcell zero" title="2026-08-12 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-13 — 1 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-14 — 2 gaps"></div><div class="gapcell zero" title="2026-08-15 — 0 gaps"></div><div class="gapcell zero" title="2026-08-16 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-08-17 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-18 — 3 gaps"></div><div class="gapcell zero" title="2026-08-19 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-08-20 — 1 gaps"></div><div class="gapcell zero" title="2026-08-21 — 0 gaps"></div><div class="gapcell zero" title="2026-08-22 — 0 gaps"></div><div class="gapcell zero" title="2026-08-23 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-08-24 — 0 gaps"></div><div class="gapcell zero" title="2026-08-25 — 0 gaps"></div><div class="gapcell zero" title="2026-08-26 — 0 gaps"></div><div class="gapcell zero" title="2026-08-27 — 0 gaps"></div><div class="gapcell zero" title="2026-08-28 — 0 gaps"></div><div class="gapcell zero" title="2026-08-29 — 0 gaps"></div><div class="gapcell zero" title="2026-08-30 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-08-31 — 0 gaps"></div><div class="gapcell zero" title="2026-09-01 — 0 gaps"></div><div class="gapcell zero" title="2026-09-02 — 0 gaps"></div><div class="gapcell zero" title="2026-09-03 — 0 gaps"></div><div class="gapcell zero" title="2026-09-04 — 0 gaps"></div><div class="gapcell zero" title="2026-09-05 — 0 gaps"></div><div class="gapcell zero" title="2026-09-06 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-09-07 — 0 gaps"></div><div class="gapcell zero" title="2026-09-08 — 0 gaps"></div><div class="gapcell zero" title="2026-09-09 — 0 gaps"></div><div class="gapcell zero" title="2026-09-10 — 0 gaps"></div><div class="gapcell zero" title="2026-09-11 — 0 gaps"></div><div class="gapcell zero" title="2026-09-12 — 0 gaps"></div><div class="gapcell zero" title="2026-09-13 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-09-14 — 0 gaps"></div><div class="gapcell zero" title="2026-09-15 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-09-16 — 2 gaps"></div><div class="gapcell zero" title="2026-09-17 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-09-18 — 14 gaps"></div><div class="gapcell zero" title="2026-09-19 — 0 gaps"></div><div class="gapcell zero" title="2026-09-20 — 0 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-09-21 — 0 gaps"></div><div class="gapcell zero" title="2026-09-22 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-09-23 — 5 gaps"></div><div class="gapcell zero" title="2026-09-24 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-09-25 — 5 gaps"></div><div class="gapcell zero" title="2026-09-26 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-09-27 — 16 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-09-28 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-09-29 — 13 gaps"></div><div class="gapcell zero" title="2026-09-30 — 0 gaps"></div><div class="gapcell zero" title="2026-10-01 — 0 gaps"></div><div class="gapcell zero" title="2026-10-02 — 0 gaps"></div><div class="gapcell zero" title="2026-10-03 — 0 gaps"></div><div class="gapcell zero" title="2026-10-04 — 0 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-10-05 — 13 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-06 — 6 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-07 — 3 gaps"></div><div class="gapcell zero" title="2026-10-08 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-10-09 — 13 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-10 — 6 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-11 — 5 gaps"></div></div><div class="gcol"><div class="gapcell zero" title="2026-10-12 — 0 gaps"></div><div class="gapcell zero" title="2026-10-13 — 0 gaps"></div><div class="gapcell zero" title="2026-10-14 — 0 gaps"></div><div class="gapcell zero" title="2026-10-15 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-16 — 2 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-10-17 — 14 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-18 — 10 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 100%, var(--bg3));" title="2026-10-19 — 26 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-20 — 5 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-10-21 — 12 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-22 — 10 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-23 — 4 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-24 — 3 gaps"></div><div class="gapcell zero" title="2026-10-25 — 0 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 74%, var(--bg3));" title="2026-10-26 — 12 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-27 — 6 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-28 — 3 gaps"></div><div class="gapcell zero" title="2026-10-29 — 0 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-10-30 — 7 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-10-31 — 1 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-11-01 — 2 gaps"></div></div><div class="gcol"><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-11-02 — 2 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 52%, var(--bg3));" title="2026-11-03 — 8 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-11-04 — 1 gaps"></div><div class="gapcell" style="background:color-mix(in srgb, var(--accent) 30%, var(--bg3));" title="2026-11-05 — 2 gaps"></div><div class="gapcell empty"></div><div class="gapcell empty"></div><div class="gapcell empty"></div></div></div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="label">gap events</div><div class="value">290</div><div class="hint">measured, not inferred</div></div>
+      <div class="stat"><div class="label">active days</div><div class="value">56</div><div class="hint">peak 26/day</div></div>
+      <div class="stat"><div class="label">things lacking</div><div class="value">108</div><div class="hint">427 occurrences</div></div>
+      <div class="stat"><div class="label">sources</div><div class="value">1</div><div class="hint">statedb</div></div>
+    </div>
+    <div class="rpanel">
+  <div class="rp-head">
+    <div><div class="rp-title">Where a plugin would have saved you work</div>
+    <div class="rp-sub">reads your real sessions · every claim carries a quote from the log · nothing is installed</div></div>
+    <div class="rp-ctl"><span class="rp-pill on">7 days</span><span class="rp-pill">14 days</span><span class="rp-pill">30 days</span><span class="rp-btn">Recommend again</span></div>
+  </div>
+  <div class="rec"><div class="rec-top"><div class="rec-title">Daily Brief News Provider</div><div class="rec-badge">3 sessions</div></div><div class="rec-job">Feed the scheduled morning brief with world headlines, ASX/finance figures and industry news without re-dispatching research subagents every day.</div><div class="rec-why">Registers news and finance sources as a provider tool and persists already-delivered items so each cron run can dedupe against previous days; a skill cannot hold that state or supply the data feed itself.</div><div class="ev"><div class="ev-q">“[IMPORTANT: You are running as a scheduled cron job.”</div><div class="ev-m">2026-11-05 · local-2f5a93f60f53531e9350cf260cd30ec15b6d1d26147ce84b2ee4cbd57409254c</div></div><div class="ev"><div class="ev-q">“Find the top 3 world news headlines from the past 12 hours”</div><div class="ev-m">2026-11-05 · 20261105_070706_e7b834</div></div><div class="ev"><div class="ev-q">“Produce an Australian finance roundup for the morning of Thursday 5 November 2026”</div><div class="ev-m">2026-11-05 · 20261105_070706_f40736</div></div><div class="rec-fix other">no catalog plugin covers this — candidate for a contribution</div></div><div class="rec"><div class="rec-top"><div class="rec-title">Gateway Service Supervisor</div><div class="rec-badge">3 sessions</div></div><div class="rec-job">Restart, health-check and re-bind the Hermes gateway and its web UI ports (9119 etc.) from outside the agent's own process.</div><div class="rec-why">The agent is explicitly blocked from restarting the gateway it runs inside, so this cannot be a skill or a shell command — it needs an out-of-process supervisor that owns the ports and can arm a detached systemd unit and persist which port serves which UI.</div><div class="ev"><div class="ev-q">“I need all three ports back on the Hermes UI that they were on before”</div><div class="ev-m">2026-11-04 · 20261104_170605_cbdae2ae</div></div><div class="ev"><div class="ev-q">“The webui on 9119 is no longer loading”</div><div class="ev-m">2026-11-05 · 20261105_124345_d2178e4a</div></div><div class="ev"><div class="ev-q">“Arm a detached one-shot systemd user unit that runs the already-written cutover script”</div><div class="ev-m">2026-11-05 · 20261105_125533_1b11fd</div></div><div class="rec-fix other">no catalog plugin covers this — candidate for a contribution</div></div><div class="rec"><div class="rec-top"><div class="rec-title">Marketplace Plugin Registry Tool</div><div class="rec-badge">3 sessions</div></div><div class="rec-job">Search the Hermes marketplace for existing plugins, install a listed one, and package local repos for official submission.</div><div class="rec-why">Needs a registered tool that talks to the marketplace registry and persists submission/install state across sessions; doing the search, duplicate check, install and submit by hand consumed hundreds of shell and file calls three separate times.</div><div class="ev"><div class="ev-q">“Is there a hermes plug in that plugs into the hermes plugin community?”</div><div class="ev-m">2026-11-05 · 20261105_081438_4d0077</div></div><div class="ev"><div class="ev-q">“https://hermes-agent.nousresearch.com/marketplace/cadence can we install this one?”</div><div class="ev-m">2026-11-05 · 20261105_081307_574ac9</div></div><div class="ev"><div class="ev-q">“hermes-band, ethical-panel, soul-finder all found on my github”</div><div class="ev-m">2026-11-01 · 20261101_134930_2b4640</div></div><div class="rec-fix other">no direct match; closest: artifact-relay (tools), artifacts (tools), hermes-jetstream (tools)</div></div><div class="rec"><div class="rec-top"><div class="rec-title">GitHub Repo Sync Auditor</div><div class="rec-badge">2 sessions</div></div><div class="rec-job">Sweep every project directory, match it to its GitHub remote, flag drift, and publish repos that are missing or out of date.</div><div class="rec-why">This is a scheduled sweep that must remember per-repo state (remote, visibility, last push) between runs and report on it; one manual pass took 201 tool calls and the same push warnings keep recurring.</div><div class="ev"><div class="ev-q">“looking across all projects in the optiplex project dir”</div><div class="ev-m">2026-11-02 · 20261102_165608_3fdace</div></div><div class="ev"><div class="ev-q">“I keep getting these warnings all the time when pushing to github”</div><div class="ev-m">2026-11-01 · 20261101_170249_83787d</div></div><div class="rec-fix other">no catalog plugin covers this — candidate for a contribution</div></div>
+  <div class="rp-foot"><div>40 sessions · 2193 tool calls · deepseek-v4.1-flash · cached</div><div></div></div>
+</div>
+    <div class="section">What keeps going missing</div>
+    <div class="grow">
+      <span class="rank">1</span>
+      <span class="count">34×</span>
+      <span class="sig">pkg:yaml</span>
+      <span class="sess">7 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">2</span>
+      <span class="count">31×</span>
+      <span class="sig">cmd:sqlite3</span>
+      <span class="sess">19 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">3</span>
+      <span class="count">16×</span>
+      <span class="sig">pkg:pip</span>
+      <span class="sess">16 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">4</span>
+      <span class="count">16×</span>
+      <span class="sig">pkg:PIL</span>
+      <span class="sess">10 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">5</span>
+      <span class="count">16×</span>
+      <span class="sig">pkg:tidalapi</span>
+      <span class="sess">14 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">6</span>
+      <span class="count">14×</span>
+      <span class="sig">pkg:playwright</span>
+      <span class="sess">10 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">7</span>
+      <span class="count">14×</span>
+      <span class="sig">cmd:docker</span>
+      <span class="sess">8 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">8</span>
+      <span class="count">12×</span>
+      <span class="sig">pkg:weasyprint</span>
+      <span class="sess">7 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">9</span>
+      <span class="count">10×</span>
+      <span class="sig">pkg:pytest</span>
+      <span class="sess">6 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+<div class="grow">
+      <span class="rank">10</span>
+      <span class="count">9×</span>
+      <span class="sig">pkg:pandas</span>
+      <span class="sess">2 sess</span>
+      <span class="badge">state.db</span>
+    </div>
+    <div class="foot">
+      <span>976 catalog entries · 4 of 200 skills overlap a plugin</span>
+      <span>read-only · no LLM in the matching path</span>
+    </div>
+  </div>
+</div>
+<div class="status"><span><b>108 gaps</b></span><span>plugin host: default</span></div>

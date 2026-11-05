@@ -1,0 +1,204 @@
+{
+ "ok": true,
+ "days": 7,
+ "from": "2026-10-29",
+ "to": "2026-11-05",
+ "recommendations": [
+  {
+   "title": "Daily Brief News Provider",
+   "job": "Feed the scheduled morning brief with world headlines, ASX/finance figures and industry news without re-dispatching research subagents every day.",
+   "why_plugin": "Registers news and finance sources as a provider tool and persists already-delivered items so each cron run can dedupe against previous days; a skill cannot hold that state or supply the data feed itself.",
+   "evidence": [
+    {
+     "session_id": "local-2f5a93f60f53531e9350cf260cd30ec15b6d1d26147ce84b2ee4cbd57409254c",
+     "quote": "[IMPORTANT: You are running as a scheduled cron job.",
+     "date": "2026-11-05",
+     "title": "Josh's Morning Brief · Nov 05 07:14"
+    },
+    {
+     "session_id": "20261105_070706_e7b834",
+     "quote": "Find the top 3 world news headlines from the past 12 hours",
+     "date": "2026-11-05",
+     "title": "Subagent: Find the top 3 world news headlines from the…"
+    },
+    {
+     "session_id": "20261105_070706_f40736",
+     "quote": "Produce an Australian finance roundup for the morning of Thursday 5 November 2026",
+     "date": "2026-11-05",
+     "title": "Subagent: Produce an Australian finance roundup for the…"
+    }
+   ],
+   "occurrences": 3,
+   "evidence_strength": "recurring",
+   "search_terms": [
+    "news provider",
+    "daily briefing",
+    "finance feed"
+   ],
+   "rejected_evidence": [],
+   "catalog_matches": [],
+   "related": [],
+   "fix": {
+    "kind": "none",
+    "note": "no catalog plugin covers this — candidate for a contribution"
+   }
+  },
+  {
+   "title": "Gateway Service Supervisor",
+   "job": "Restart, health-check and re-bind the Hermes gateway and its web UI ports (9119 etc.) from outside the agent's own process.",
+   "why_plugin": "The agent is explicitly blocked from restarting the gateway it runs inside, so this cannot be a skill or a shell command — it needs an out-of-process supervisor that owns the ports and can arm a detached systemd unit and persist which port serves which UI.",
+   "evidence": [
+    {
+     "session_id": "20261104_170605_cbdae2ae",
+     "quote": "I need all three ports back on the Hermes UI that they were on before",
+     "date": "2026-11-04",
+     "title": "Fix WebUI port 9119 connection issues"
+    },
+    {
+     "session_id": "20261105_124345_d2178e4a",
+     "quote": "The webui on 9119 is no longer loading",
+     "date": "2026-11-05",
+     "title": "Diagnose web UI not loading on port 9119"
+    },
+    {
+     "session_id": "20261105_125533_1b11fd",
+     "quote": "Arm a detached one-shot systemd user unit that runs the already-written cutover script",
+     "date": "2026-11-05",
+     "title": "Subagent: Arm a detached one-shot systemd user unit that…"
+    }
+   ],
+   "occurrences": 3,
+   "evidence_strength": "recurring",
+   "search_terms": [
+    "gateway restart",
+    "service supervisor",
+    "web ui ports"
+   ],
+   "rejected_evidence": [],
+   "catalog_matches": [],
+   "related": [],
+   "fix": {
+    "kind": "none",
+    "note": "no catalog plugin covers this — candidate for a contribution"
+   }
+  },
+  {
+   "title": "Marketplace Plugin Registry Tool",
+   "job": "Search the Hermes marketplace for existing plugins, install a listed one, and package local repos for official submission.",
+   "why_plugin": "Needs a registered tool that talks to the marketplace registry and persists submission/install state across sessions; doing the search, duplicate check, install and submit by hand consumed hundreds of shell and file calls three separate times.",
+   "evidence": [
+    {
+     "session_id": "20261105_081438_4d0077",
+     "quote": "Is there a hermes plug in that plugs into the hermes plugin community?",
+     "date": "2026-11-05",
+     "title": "Find Hermes plugin for community marketplace integration"
+    },
+    {
+     "session_id": "20261105_081307_574ac9",
+     "quote": "https://hermes-agent.nousresearch.com/marketplace/cadence can we install this one?",
+     "date": "2026-11-05",
+     "title": "Install Cadence from Hermes marketplace"
+    },
+    {
+     "session_id": "20261101_134930_2b4640",
+     "quote": "hermes-band, ethical-panel, soul-finder all found on my github",
+     "date": "2026-11-01",
+     "title": "Submit hermes-band, ethical-panel, soul-finder as plugins"
+    }
+   ],
+   "occurrences": 3,
+   "evidence_strength": "recurring",
+   "search_terms": [
+    "marketplace",
+    "plugin registry",
+    "plugin install",
+    "publish"
+   ],
+   "rejected_evidence": [],
+   "catalog_matches": [],
+   "related": [
+    {
+     "id": "artifact-relay",
+     "name": "artifact-relay",
+     "installed": false,
+     "category": "tools",
+     "score": 2,
+     "matched_on": "tools"
+    },
+    {
+     "id": "artifacts",
+     "name": "artifacts",
+     "installed": false,
+     "category": "tools",
+     "score": 2,
+     "matched_on": "tools"
+    },
+    {
+     "id": "hermes-jetstream",
+     "name": "hermes-jetstream",
+     "installed": false,
+     "category": "platform",
+     "score": 2,
+     "matched_on": "tools"
+    }
+   ],
+   "fix": {
+    "kind": "related",
+    "command": null,
+    "note": "no direct match; closest: artifact-relay (tools), artifacts (tools), hermes-jetstream (tools)"
+   }
+  },
+  {
+   "title": "GitHub Repo Sync Auditor",
+   "job": "Sweep every project directory, match it to its GitHub remote, flag drift, and publish repos that are missing or out of date.",
+   "why_plugin": "This is a scheduled sweep that must remember per-repo state (remote, visibility, last push) between runs and report on it; one manual pass took 201 tool calls and the same push warnings keep recurring.",
+   "evidence": [
+    {
+     "session_id": "20261102_165608_3fdace",
+     "quote": "looking across all projects in the optiplex project dir",
+     "date": "2026-11-02",
+     "title": "Find out-of-sync GitHub repos in optiplex dir"
+    },
+    {
+     "session_id": "20261101_170249_83787d",
+     "quote": "I keep getting these warnings all the time when pushing to github",
+     "date": "2026-11-01",
+     "title": "Diagnose recurring GitHub push warnings"
+    }
+   ],
+   "occurrences": 2,
+   "evidence_strength": "recurring",
+   "search_terms": [
+    "repo audit",
+    "github sync",
+    "scheduled sweep"
+   ],
+   "rejected_evidence": [],
+   "catalog_matches": [],
+   "related": [],
+   "fix": {
+    "kind": "none",
+    "note": "no catalog plugin covers this — candidate for a contribution"
+   }
+  }
+ ],
+ "dropped": [],
+ "stats": {
+  "sessions": 40,
+  "asks": 89,
+  "tool_calls": 2193,
+  "chars": 18926,
+  "truncated": false
+ },
+ "llm": {
+  "lane": "chat",
+  "provider": "opencode-go",
+  "model": "deepseek-v4.1-flash",
+  "tokens": 12123,
+  "cost_usd": null,
+  "structured_error": "BadRequestError: Error code: 400 - {'error': {'param': None, 'type': 'invalid_request_error', 'code': 'invalid_request_error', 'message': 'Upstream request failed: [invalid_request_error] this feature is not yet supported by atlas (request_id: gw-adba0f494bbd-1ddf33)'}}",
+  "raw": "{\"recommendations\": [{\"title\": \"Gateway Service Supervisor\", \"job\": \"Restart, health-check and re-bind the Hermes gateway and its web UI ports (9119 etc.) from outside the agent's own process.\", \"why_plugin\": \"The agent is explicitly blocked from restarting the gateway it runs inside, so this cannot be a skill or a shell command — it needs an out-of-process supervisor that owns the ports and can arm a detached systemd unit and persist which port serves which UI.\", \"evidence\": [{\"session_id\": \"20261104_170605_cbdae2ae\", \"quote\": \"I need all three ports back on the Hermes UI that they were on before\"}, {\"session_id\": \"20261105_124345_d2178e4a\", \"quote\": \"The webui on 9119 is no longer loading\"}, {\"session_id\": \"20261105_125533_1b11fd\", \"quote\": \"Arm a detached one-shot systemd user unit that runs the already-written cutover script\"}], \"search_terms\": [\"gateway restart\", \"service supervisor\", \"web ui ports\"]}, {\"title\": \"Marketplace Plugin Registry Tool\", \"job\": \"Search the Hermes marketplace for existing plugins, install a listed one, and package local repos for official submission.\", \"why_plugin\": \"Needs a registered tool that talks to the marketplace registry and persists submission/install state across sessions; doing the search, duplicate check, install and submit by hand consumed hundreds of shell and file calls three separate times.\", \"evidence\": [{\"session_id\": \"20261105_081438_4d0077\", \"quote\": \"Is there a hermes plug in that plugs into the hermes plugin community?\"}, {"
+ },
+ "prompt_version": "scout-recommend-v1",
+ "cached": false
+}

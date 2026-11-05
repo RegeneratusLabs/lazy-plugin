@@ -77,4 +77,27 @@ BACKFILL = {
     },
 }
 
-ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL]
+RECOMMEND = {
+    "name": "pluginscout_recommend",
+    "description": (
+        "Read the user's real sessions from the last N days and judge where a PLUGIN would have "
+        "replaced repeated manual work — the semantic question the deterministic matcher cannot "
+        "answer. Every recommendation must carry a verbatim quote and a session id that exist in "
+        "the log; ungrounded ones are dropped and reported. Each result is joined against the "
+        "catalog: either an install command, or 'no catalog plugin covers this'. Cached for 12h "
+        "per window, so pressing twice does not spend twice. Use when the user asks what plugin "
+        "they need, what they keep doing by hand, or what is missing from their setup."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 365,
+                     "description": "Window size in days (default 7)."},
+            "force": {"type": "boolean",
+                      "description": "Ignore the cache and spend a model call (default false)."},
+        },
+        "required": [],
+    },
+}
+
+ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, RECOMMEND]
