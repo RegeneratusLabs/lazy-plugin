@@ -338,12 +338,20 @@ def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(state_dir() / "ledger.db", timeout=10)
     conn.execute("""CREATE TABLE IF NOT EXISTS gaps (
         id TEXT PRIMARY KEY, kind TEXT NOT NULL, signature TEXT NOT NULL,
-        tool TEXT, snippet TEXT, session_id TEXT, ts REAL NOT NULL, seen INTEGER DEFAULT 1)""")
+        tool TEXT, snippet TEXT, session_id TEXT, ts REAL NOT NULL, seen INTEGER DEFAULT 1,
+        source TEXT DEFAULT 'live')""")
+    try:  # migrate a ledger written before `source` existed
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(gaps)")}
+        if "source" not in cols:
+            conn.execute("ALTER TABLE gaps ADD COLUMN source TEXT DEFAULT 'live'")
+    except Exception:
+        pass
     conn.execute("CREATE INDEX IF NOT EXISTS gaps_sig ON gaps(signature)")
     return conn
 
 
-def record_gap(kind: str, signature: str, *, tool: str = "", snippet: str = "", session_id: str = "") -> bool:
+def record_gap(kind: str, signature: str, *, tool: str = "", snippet: str = "",
+               session_id: str = "", source: str = "live") -> bool:
     import hashlib
 
     signature = (signature or "").strip()[:120]
@@ -353,33 +361,42 @@ def record_gap(kind: str, signature: str, *, tool: str = "", snippet: str = "", 
     now = time.time()
     with _db() as conn:
         conn.execute(
-            """INSERT INTO gaps (id, kind, signature, tool, snippet, session_id, ts, seen)
-               VALUES (?,?,?,?,?,?,?,1)
-               ON CONFLICT(id) DO UPDATE SET seen = seen + 1, ts = excluded.ts""",
-            (gid, kind, signature, tool[:80], snippet[:120], session_id[:64], now))
+            """INSERT INTO gaps (id, kind, signature, tool, snippet, session_id, ts, seen, source)
+               VALUES (?,?,?,?,?,?,?,1,?)
+               ON CONFLICT(id) DO UPDATE SET seen = seen + 1, ts = MAX(ts, excluded.ts)""",
+            (gid, kind, signature, tool[:80], snippet[:120], session_id[:64], now, source))
     return True
 
 
 def gaps(limit: int = 20) -> dict:
+    """Aggregated by signature across sessions: one row per thing you reached for and lacked."""
     try:
         with _db() as conn:
             rows = conn.execute(
-                """SELECT kind, signature, tool, snippet, seen, ts FROM gaps
-                   ORDER BY seen DESC, ts DESC LIMIT ?""", (max(1, limit),)).fetchall()
-            total = conn.execute("SELECT COUNT(*) FROM gaps").fetchone()[0]
+                """SELECT kind, signature, MAX(tool), MAX(snippet), SUM(seen), MAX(ts),
+                          MAX(source), COUNT(*) AS sessions
+                   FROM gaps GROUP BY signature
+                   ORDER BY SUM(seen) DESC, MAX(ts) DESC LIMIT ?""", (max(1, limit),)).fetchall()
+            total = conn.execute("SELECT COUNT(DISTINCT signature) FROM gaps").fetchone()[0]
+            backfilled = conn.execute(
+                "SELECT COUNT(DISTINCT signature) FROM gaps WHERE source = 'backfill'"
+            ).fetchone()[0]
+            events = conn.execute("SELECT SUM(seen) FROM gaps").fetchone()[0] or 0
     except Exception as exc:  # pragma: no cover - defensive
         return {"total": 0, "top": [], "error": str(exc)}
     now = time.time()
-    return {"total": total, "top": [
+    return {"total": total, "events": events, "backfilled": backfilled, "top": [
         {"kind": r[0], "signature": r[1], "tool": r[2], "snippet": r[3], "seen": r[4],
-         "age_hours": round((now - r[5]) / 3600.0, 1)} for r in rows]}
+         "age_hours": round((now - r[5]) / 3600.0, 1), "source": r[6] or "live",
+         "sessions": r[7]} for r in rows]}
 
 
 def prune_gaps() -> None:
+    """Live rows age out; backfilled rows are history and only lose to the row cap."""
     try:
         with _db() as conn:
             cutoff = time.time() - GAP_RETENTION_DAYS * 86400
-            conn.execute("DELETE FROM gaps WHERE ts < ?", (cutoff,))
+            conn.execute("DELETE FROM gaps WHERE ts < ? AND source = 'live'", (cutoff,))
             conn.execute(
                 "DELETE FROM gaps WHERE id NOT IN "
                 "(SELECT id FROM gaps ORDER BY ts DESC LIMIT ?)", (GAP_MAX_ROWS,))
@@ -425,12 +442,28 @@ def build_report(format: str = "summary", min_match: int = 1) -> dict:
     matches.sort(key=lambda m: (-m["lines"], m["skill"]))
 
     gap_data = gaps(limit=20)
+
+    # A gap becomes actionable when the identifier the agent lacked names a catalog plugin or tool.
+    answers = []
+    for g in gap_data.get("top", []):
+        ident = g["signature"].split(":", 1)[-1]
+        candidates = sorted(index.get(ident, ())) or sorted(index.get(ident.replace("_", "-"), ()))
+        if not candidates:
+            continue
+        fresh = [p for p in candidates if p.lower() not in installed]
+        plugin = fresh[0] if fresh else candidates[0]
+        is_installed = plugin.lower() in installed
+        answers.append({**g, "plugin": plugin, "installed": is_installed,
+                        "install": "already installed" if is_installed
+                                   else f"hermes plugins install {plugin}"})
+
     headline = {
         "matched_skills": len(matches),
         "total_skills": len(skills),
         "skill_lines": sum(m["lines"] for m in matches),
         "recommendable": sum(1 for m in matches if not m["installed"]),
         "gaps": gap_data.get("total", 0),
+        "gap_answers": len(answers),
     }
     report = {
         "headline": headline,
@@ -438,24 +471,33 @@ def build_report(format: str = "summary", min_match: int = 1) -> dict:
                     "source": catalog.get("source"), "age_hours": catalog.get("age_hours")},
         "skills": {"total": len(skills), "dir": str(skills_dir())},
         "matches": matches,
+        "gap_answers": answers,
         "gaps": gap_data,
     }
     if format == "summary":
         report["matches"] = matches[:5]
+        report["gap_answers"] = answers[:5]
     return report
 
 
 def summary_text(report: Optional[dict] = None) -> str:
     r = report or build_report("summary")
     h = r["headline"]
+    gaps_info = r["gaps"]
     lines = [
-        f"{h['matched_skills']} of {h['total_skills']} skills overlap a catalog plugin "
-        f"({h['skill_lines']} lines, {r['catalog']['entries']} catalog entries, "
-        f"catalog {r['catalog']['source']})",
-        f"{h.get('recommendable', 0)} of those are not installed yet · {h['gaps']} recorded capability gaps",
+        f"{h['gaps']} capability gaps recorded from real tool calls "
+        f"({gaps_info.get('events', h['gaps'])} occurrences, "
+        f"{gaps_info.get('backfilled', 0)} found by mining session history)",
     ]
+    for a in r.get("gap_answers", [])[:3]:
+        lines.append(f"  gap {a['signature']} ×{a['seen']} -> {a['plugin']} · {a['install']}")
+    for g in (gaps_info.get("top") or [])[:5]:
+        if g["signature"] not in {a["signature"] for a in r.get("gap_answers", [])}:
+            lines.append(f"  gap {g['signature']} ×{g['seen']} ({g['source']})")
+    lines.append(
+        f"{h['matched_skills']} of {h['total_skills']} skills also overlap a catalog plugin "
+        f"({h['skill_lines']} lines, {h.get('recommendable', 0)} not installed; "
+        f"{r['catalog']['entries']} catalog entries, catalog {r['catalog']['source']})")
     for m in r["matches"][:5]:
         lines.append(f"  {m['skill']} -> {m['plugin']} ({', '.join(m['ids'][:3])}) · {m['install']}")
-    for g in (r["gaps"].get("top") or [])[:5]:
-        lines.append(f"  gap {g['kind']}: {g['signature']} ×{g['seen']}")
     return "\n".join(lines)

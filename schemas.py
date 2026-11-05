@@ -53,4 +53,25 @@ EXPLAIN = {
     },
 }
 
-ALL = [REPORT, REFRESH, EXPLAIN]
+BACKFILL = {
+    "name": "pluginscout_backfill",
+    "description": (
+        "Mine past session transcripts on disk for capability gaps the agent hit before this plugin "
+        "existed: missing binaries and missing Python packages only. Distinct from the live hooks — "
+        "this is history, so a fresh install has real data on day one. Idempotent. "
+        "Use when the gap feed is empty, after installing, or when the user asks what they have "
+        "repeatedly reached for and not had."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 3650,
+                     "description": "How far back to look (default 90)."},
+            "max_sessions": {"type": "integer", "minimum": 1, "maximum": 5000,
+                             "description": "Most recent transcripts to read (default 200)."},
+        },
+        "required": [],
+    },
+}
+
+ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL]

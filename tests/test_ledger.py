@@ -10,10 +10,14 @@ def test_same_signature_upserts_and_counts(core):
     assert data["top"][0]["signature"] == "cmd:magick"
 
 
-def test_distinct_sessions_are_distinct_rows(core):
+def test_same_gap_in_two_sessions_aggregates(core):
+    """The feed is one row per thing you lacked, not one row per session."""
     core.record_gap("cmd_not_found", "cmd:magick", session_id="s1")
     core.record_gap("cmd_not_found", "cmd:magick", session_id="s2")
-    assert core.gaps()["total"] == 2
+    data = core.gaps()
+    assert data["total"] == 1
+    assert data["top"][0]["seen"] == 2
+    assert data["top"][0]["sessions"] == 2
 
 
 def test_empty_signature_is_ignored(core):

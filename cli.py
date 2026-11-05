@@ -7,12 +7,16 @@ import json
 from pathlib import Path
 
 
-def _core():
-    p = Path(__file__).parent / "core.py"
-    spec = importlib.util.spec_from_file_location("pluginscout_core", p)
+def _load(name: str, filename: str):
+    p = Path(__file__).parent / filename
+    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", p)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod
+
+
+def _core():
+    return _load("core", "core.py")
 
 
 def slash(raw_args: str = "") -> str:
@@ -55,6 +59,9 @@ def setup(subparser) -> None:
     gaps = sub.add_parser("gaps", help="Recorded capability gaps")
     gaps.add_argument("--limit", type=int, default=20)
     sub.add_parser("refresh", help="Re-fetch the catalog and rebuild the index")
+    bf = sub.add_parser("backfill", help="Mine past session transcripts for gaps")
+    bf.add_argument("--days", type=int, default=90)
+    bf.add_argument("--max-sessions", type=int, default=200)
     exp = sub.add_parser("explain", help="Show the evidence behind one match or gap")
     exp.add_argument("target")
 
@@ -78,6 +85,13 @@ def run(args) -> int:
         print(f"{data['total']} gap rows\n")
         for g in data["top"]:
             print(f"  {g['seen']:>3}×  {g['kind']:<18} {g['signature']:<38} {g['age_hours']}h ago")
+        return 0
+
+    if cmd == "backfill":
+        history = _load("history", "history.py")
+        print(json.dumps(history.backfill(days=getattr(args, "days", 90) or 90,
+                                          max_sessions=getattr(args, "max_sessions", 200) or 200),
+                         indent=2))
         return 0
 
     if cmd == "explain":
@@ -105,18 +119,27 @@ def run(args) -> int:
 
     h = report["headline"]
     c = report["catalog"]
-    print(f"\n{h['matched_skills']} of {h['total_skills']} skills overlap a catalog plugin "
-          f"({h['skill_lines']} lines) · {h['gaps']} recorded gaps")
+    gi = report["gaps"]
+    print(f"\n{h['gaps']} capability gaps from real tool calls "
+          f"({gi.get('events', h['gaps'])} occurrences across {report['skills']['total']} skills' "
+          f"worth of history; {gi.get('backfilled', 0)} mined from transcripts)")
     print(f"catalog: {c['entries']} entries, {c['source']}, {c['age_hours']}h old\n")
+
+    answers = {a["signature"] for a in report.get("gap_answers", [])}
+    for a in report.get("gap_answers", [])[:10]:
+        print(f"  gap {a['signature'][:30]:30} ×{a['seen']:<3} -> {a['plugin'][:22]:22} {a['install']}")
+    for g in report["gaps"].get("top", [])[:15]:
+        if g["signature"] in answers:
+            continue
+        print(f"  gap {g['signature'][:30]:30} ×{g['seen']:<3} {g['kind']:<16} {g['source']}")
+
+    print(f"\n{h['matched_skills']} of {h['total_skills']} skills also overlap a catalog plugin "
+          f"({h['skill_lines']} lines, {h.get('recommendable', 0)} not installed)\n")
     rows = report["matches"] if getattr(args, "all", False) else report["matches"][:20]
-    if rows:
-        for m in rows:
-            flag = " agent" if m["agent_created"] else ""
-            tail = " [installed]" if m.get("installed") else ""
-            print(f"  {m['skill'][:34]:34} -> {m['plugin'][:28]:28} {','.join(m['ids'][:2])}{flag}{tail}")
-        print()
-    for g in report["gaps"].get("top", [])[:10]:
-        print(f"  gap {g['kind']:<18} {g['signature'][:40]:40} ×{g['seen']}")
+    for m in rows:
+        flag = " agent" if m["agent_created"] else ""
+        tail = " [installed]" if m.get("installed") else ""
+        print(f"  {m['skill'][:34]:34} -> {m['plugin'][:28]:28} {','.join(m['ids'][:2])}{flag}{tail}")
     return 0
 
 

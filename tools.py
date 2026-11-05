@@ -84,8 +84,30 @@ def handle_explain(params: Optional[dict] = None, **kwargs: Any) -> str:
         return _err(exc, "report failed; check the skills directory and catalog cache")
 
 
+def _load_sibling(name: str, filename: str):
+    spec = importlib.util.spec_from_file_location(f"pluginscout_{name}", Path(__file__).parent / filename)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+def handle_backfill(params: Optional[dict] = None, **kwargs: Any) -> str:
+    params = params or {}
+    try:
+        days = max(1, min(3650, int(params.get("days") or 90)))
+        max_sessions = max(1, min(5000, int(params.get("max_sessions") or 200)))
+    except (TypeError, ValueError):
+        days, max_sessions = 90, 200
+    try:
+        history = _load_sibling("history", "history.py")
+        return json.dumps(history.backfill(days=days, max_sessions=max_sessions))
+    except Exception as exc:
+        return _err(exc, "session transcripts unreadable; live hooks still record from now on")
+
+
 HANDLERS = {
     "pluginscout_report": handle_report,
     "pluginscout_refresh": handle_refresh,
     "pluginscout_explain": handle_explain,
+    "pluginscout_backfill": handle_backfill,
 }

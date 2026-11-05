@@ -9,8 +9,15 @@ calls actually produced. Then it puts a catalog plugin next to each one that alr
 Read-only. No LLM in the matching path. Never installs anything.
 
 ```
-4 of 199 skills overlap a catalog plugin (1204 lines, 976 catalog entries)
-3 of those are not installed yet · 0 recorded capability gaps
+25 capability gaps from real tool calls (57 occurrences, 25 mined from transcripts)
+
+  gap pkg:pandas               ×9   cmd_not_found   backfill
+  gap pkg:markdown             ×7   cmd_not_found   backfill
+  gap pkg:weasyprint           ×5   cmd_not_found   backfill
+  gap cmd:pandoc               ×3   cmd_not_found   backfill
+  gap pkg:youtube_transcript_api ×3 cmd_not_found   backfill
+
+4 of 199 skills also overlap a catalog plugin (1204 lines, 3 not installed)
 
   oauth-local-server-flow  -> tidal          hosts:tidal
   ethics-filter            -> ethics-filter  commands:ethics-filter  [installed]
@@ -18,7 +25,26 @@ Read-only. No LLM in the matching path. Never installs anything.
   spotify                  -> spotify        hosts:spotify
 ```
 
-That output is real, from a 199-skill profile against the live 976-entry catalog.
+That output is real, from a 199-skill profile against the live 976-entry catalog, with 99 session
+transcripts (4,892 tool calls) mined in 1.7 seconds.
+
+## Why this isn't a skill
+
+The hackathon favours entries that "do more than a prompt or a skill could." Three things here are
+outside what a skill can do, and they are the reason the plugin exists:
+
+1. **It watches without being asked.** `post_tool_call` fires on every tool call whether or not any
+   skill is loaded. A skill only exists while it's in context; it cannot observe the failure that
+   happens three turns after it was read.
+2. **It remembers.** The ledger is SQLite on disk, keyed by signature, aggregated across sessions.
+   A skill has no storage — the model would have to re-derive every prior failure from context it
+   no longer has.
+3. **It reads history a skill can't afford to.** `pluginscout_backfill` walks 32 MB of JSONL
+   transcripts, keeps only missing-binary and missing-package events, and does it in under two
+   seconds. Loading that into a context window is not a thing that can happen.
+
+The skill↔catalog ledger, on its own, *is* reproducible with a script and a prompt — which is why
+it's the second panel in the UI and not the headline any more.
 
 ## Why the number is small
 

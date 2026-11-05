@@ -17,7 +17,7 @@ def test_report_carries_usage_and_install(core):
 
 def test_summary_is_short_and_names_the_number(core):
     text = core.summary_text()
-    assert "2 of 5 skills overlap a catalog plugin" in text
+    assert "2 of 5 skills also overlap a catalog plugin" in text
     assert len(text) < 1200
 
 
@@ -42,3 +42,21 @@ def test_installed_plugin_is_not_a_recommendation(core, tmp_path):
     assert bd["installed"] is True
     assert bd["install"] == "already installed"
     assert report["headline"]["recommendable"] == 1  # office-desk only
+
+
+def test_gap_naming_a_plugin_becomes_a_recommendation(core):
+    """The join that makes the gap feed actionable: you reached for X, the catalog has X."""
+    core.record_gap("cmd_not_found", "cmd:brightdata", session_id="s1")
+    report = core.build_report("full")
+    answers = report["gap_answers"]
+    assert len(answers) == 1
+    assert answers[0]["plugin"] == "brightdata"
+    assert answers[0]["install"] == "hermes plugins install brightdata"
+    assert report["headline"]["gap_answers"] == 1
+
+
+def test_unanswerable_gap_is_not_forced_into_a_match(core):
+    core.record_gap("cmd_not_found", "cmd:some-tool-nobody-built", session_id="s1")
+    report = core.build_report("full")
+    assert report["gap_answers"] == []
+    assert report["headline"]["gaps"] == 1
