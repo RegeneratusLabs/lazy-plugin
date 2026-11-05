@@ -100,4 +100,30 @@ RECOMMEND = {
     },
 }
 
-ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, RECOMMEND]
+CONTRIBUTIONS = {
+    "name": "pluginscout_contributions",
+    "description": (
+        "Screen the agent's own recently created skills and say which are worth publishing to the "
+        "Hermes community: publishable, needs scrubbing (naming the exact personal strings and line "
+        "numbers), already covered by a catalog plugin, or keep private. Deterministic — no model "
+        "call, no token spend. Pass package_name to stage a submission bundle (scrubbed SKILL.md, a "
+        "README that credits the author, and CONTRIBUTION.json) in the plugin's outbox. Use when the "
+        "user asks what they could contribute, which of their skills are reusable, or how to share "
+        "something the agent learned."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "days": {"type": "integer", "minimum": 1, "maximum": 3650,
+                     "description": "How recently the skill was created or patched (default 60)."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 50,
+                      "description": "Most candidates to return (default 12)."},
+            "package_name": {"type": "string",
+                             "description": "Stage this skill as a submission bundle instead of just "
+                                            "screening. Refuses anything scored private."},
+        },
+        "required": [],
+    },
+}
+
+ALL = [REPORT, REFRESH, EXPLAIN, BACKFILL, RECOMMEND, CONTRIBUTIONS]

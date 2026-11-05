@@ -20,6 +20,22 @@ Read-only. No LLM in the matching path. Never installs anything.
 4 of 200 skills also overlap a catalog plugin (3 not installed)
 ```
 
+## Skills worth sharing
+
+The second panel screens the skills the **agent itself wrote** and says which are worth publishing:
+`publish`, `needs scrub`, `too thin`, `already covered` by a catalog plugin, or `keep private`.
+Screening is deterministic — no model call, no token spend — and every verdict names the exact
+strings that decided it (personal paths, hosts, names, org, accounts, ports, with line numbers).
+
+`Stage for submission` writes a bundle to the plugin's outbox: `SKILL.md` with those strings
+replaced by placeholders (`<path>`, `<host>`, `<name>`, `<port>`), a `README.md` that credits the
+author under MIT, and `CONTRIBUTION.json` recording every redaction. Private skills are refused,
+not published with a warning. Skills whose bodies need the turn loop, a schedule or a UI are
+flagged `as plugin` rather than `as skill`.
+
+On a real profile (60 days): **35 agent-written skills — 18 publishable, 12 need scrubbing,
+5 keep private.**
+
 ## After changing `plugin_api.py`, restart the backend
 
 The dashboard mounts plugin API routes **in-process, at startup**. A running gateway keeps the

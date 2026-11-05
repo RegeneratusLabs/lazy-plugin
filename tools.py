@@ -139,10 +139,30 @@ def handle_recommend(params: Optional[dict] = None, **kwargs: Any) -> str:
         return _err(exc, "recommendation pass failed; the gap ledger is unaffected")
 
 
+def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
+    """Screening needs no model; packaging writes only inside the plugin's own outbox."""
+    params = params or {}
+    try:
+        days = max(1, min(3650, int(params.get("days") or 60)))
+        limit = max(1, min(50, int(params.get("limit") or 12)))
+    except (TypeError, ValueError):
+        days, limit = 60, 12
+    try:
+        contrib = _load_sibling("skills_contrib", "skills_contrib.py")
+        contrib._CORE = core
+        name = str(params.get("package_name") or "").strip()
+        if name:
+            return json.dumps(contrib.package(name, days=days))
+        return json.dumps(contrib.run(days=days, limit=limit))
+    except Exception as exc:
+        return _err(exc, "skill screening failed; nothing was written")
+
+
 HANDLERS = {
     "pluginscout_report": handle_report,
     "pluginscout_refresh": handle_refresh,
     "pluginscout_explain": handle_explain,
     "pluginscout_backfill": handle_backfill,
     "pluginscout_recommend": handle_recommend,
+    "pluginscout_contributions": handle_contributions,
 }

@@ -55,7 +55,10 @@ function makeApi(ctx) {
     report: () => rest('/report?format=json'),
     recommend: (days, force) =>
       rest('/recommend', { method: 'POST', body: JSON.stringify({ days, force: !!force }) }),
-    cached: days => rest(`/recommend?days=${days}`)
+    cached: days => rest(`/recommend?days=${days}`),
+    contributions: days => rest(`/contributions?days=${days}`),
+    packageSkill: (name, days) =>
+      rest('/contributions/package', { method: 'POST', body: JSON.stringify({ name, days }) })
   }
 }
 
@@ -270,10 +273,12 @@ function RecommendPanel() {
               jsx('button', {
                 onClick: () => run(!!result),
                 disabled: busy,
-                className: 'ml-1 rounded px-2.5 py-1 text-[0.7rem] font-medium',
+                className: 'ml-1 shrink-0 rounded px-3 py-1 text-[0.7rem] font-medium',
                 style: {
-                  background: 'var(--ui-accent)',
-                  color: 'var(--ui-bg-primary)',
+                  background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
+                  border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
+                  color: 'var(--ui-text-primary)',
+                  whiteSpace: 'nowrap',
                   opacity: busy ? 0.6 : 1,
                   cursor: busy ? 'default' : 'pointer'
                 },
@@ -352,9 +357,7 @@ function ScoutPage() {
   if (!data) return jsx('div', { className: 'p-6 text-sm text-(--ui-text-tertiary)', children: 'Reading the ledger…' })
 
   const field = data.field || { cells: [], max: 0, total: 0, active_days: 0 }
-  const gaps = (data.gaps && data.gaps.top) || []
   const sources = data.sources || {}
-  const top = gaps[0]
 
   return jsxs('div', {
     className: 'flex flex-col gap-6 p-5',
@@ -371,32 +374,214 @@ function ScoutPage() {
       }),
       jsx(Field, { cells: field.cells, max: field.max }),
       jsxs('div', {
-        className: 'grid grid-cols-4 gap-4 rounded border p-3',
+        className: 'grid grid-cols-3 gap-4 rounded border p-3',
         style: { borderColor: 'var(--ui-stroke-tertiary)' },
         children: [
           jsx(Stat, { label: 'gap events', value: String(field.total), hint: 'measured, not inferred' }),
           jsx(Stat, { label: 'active days', value: String(field.active_days), hint: `peak ${field.max}/day` }),
-          jsx(Stat, { label: 'things lacking', value: String((data.gaps && data.gaps.total) || 0), hint: `${(data.gaps && data.gaps.events) || 0} occurrences` }),
+          jsx(Stat, { label: 'peak day', value: String(field.max), hint: 'most gaps in one day' }),
           jsx(Stat, { label: 'sources', value: String(Object.keys(sources).length), hint: Object.keys(sources).join(' · ') || 'none yet' })
         ]
       }),
       jsx(RecommendPanel, {}),
+      jsx(ContributionsPanel, {})
+    ]
+  })
+}
+
+// ---------- contributions panel (button two)
+
+const CONTRIB_RANGES = [30, 60, 90]
+
+const VERDICT_LABEL = {
+  publish: 'publish',
+  scrub: 'needs scrub',
+  thin: 'too thin',
+  already_covered: 'already covered',
+  private: 'keep private'
+}
+
+function VerdictChip({ verdict }) {
+  const isPublish = verdict === 'publish'
+  const isScrub = verdict === 'scrub'
+  return jsx('span', {
+    className: 'shrink-0 rounded px-1.5 py-0.5 text-[0.58rem] uppercase tracking-wide',
+    style: {
+      border: `1px solid ${isPublish || isScrub
+        ? 'color-mix(in srgb, var(--ui-accent) 55%, transparent)'
+        : 'var(--ui-stroke-tertiary)'}`,
+      color: isPublish ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)'
+    },
+    children: VERDICT_LABEL[verdict] || verdict
+  })
+}
+
+function ContributionCard({ item, days }) {
+  const [staged, setStaged] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  function stage() {
+    setBusy(true)
+    ContributionsPanel.__api
+      .packageSkill(item.name, days)
+      .then(out => setStaged(out))
+      .catch(err => setStaged({ ok: false, error: String(err && err.message ? err.message : err) }))
+      .finally(() => setBusy(false))
+  }
+
+  const canStage = item.verdict === 'publish' || item.verdict === 'scrub'
+  const markers = (item.markers || []).slice(0, 3)
+    .map(m => `${m.kind}:${m.line} ${m.text}`)
+    .join('   ·   ')
+
+  return jsxs('div', {
+    className: 'rounded border p-3',
+    style: { borderColor: 'var(--ui-stroke-tertiary)' },
+    children: [
       jsxs('div', {
+        className: 'flex items-baseline justify-between gap-3',
         children: [
-          jsx('div', { className: 'mb-2 text-sm font-medium text-foreground', children: 'What keeps going missing' }),
-          gaps.slice(0, 10).map((gap, i) => jsx(GapRow, { gap, rank: i + 1 }, gap.signature))
+          jsxs('div', {
+            className: 'flex min-w-0 items-center gap-2',
+            children: [
+              jsx('div', { className: 'truncate text-[0.8rem] font-medium text-foreground', children: item.name }),
+              jsx(VerdictChip, { verdict: item.verdict }),
+              jsx('span', {
+                className: 'shrink-0 text-[0.58rem] uppercase tracking-wide text-(--ui-text-quaternary)',
+                children: item.contribute_as === 'plugin' ? 'as plugin' : 'as skill'
+              })
+            ]
+          }),
+          jsx('div', { className: 'shrink-0 text-[0.6rem] text-(--ui-text-quaternary)', children: item.created || '' })
         ]
       }),
-      top
-        ? jsx('div', {
-            className: 'rounded border p-3 text-xs text-(--ui-text-tertiary)',
-            style: { borderColor: 'var(--ui-stroke-tertiary)' },
-            children: `Most-reached-for: ${top.signature} — ${top.seen} times across ${top.sessions || 1} session(s).`
+      jsx('div', { className: 'mt-1 text-[0.7rem] text-(--ui-text-secondary)', children: item.description }),
+      jsx('div', {
+        className: 'mt-1.5 flex flex-col gap-0.5',
+        children: (item.reasons || []).map((r, i) =>
+          jsx('div', { className: 'text-[0.66rem] text-(--ui-text-tertiary)', children: `· ${r}` }, i))
+      }),
+      markers
+        ? jsx('div', { className: 'mt-1.5 truncate font-mono text-[0.62rem] text-(--ui-text-quaternary)', children: markers })
+        : null,
+      canStage
+        ? jsxs('div', {
+            className: 'mt-2 flex items-center gap-2',
+            children: [
+              jsx('button', {
+                onClick: stage,
+                disabled: busy,
+                className: 'shrink-0 rounded px-2 py-1 text-[0.64rem]',
+                style: {
+                  border: '1px solid var(--ui-stroke-secondary)',
+                  color: 'var(--ui-text-secondary)',
+                  whiteSpace: 'nowrap',
+                  cursor: busy ? 'default' : 'pointer'
+                },
+                children: busy ? 'Staging…' : 'Stage for submission'
+              }),
+              staged
+                ? jsx('span', {
+                    className: 'truncate font-mono text-[0.62rem]',
+                    style: { color: staged.ok ? 'var(--ui-text-tertiary)' : 'var(--ui-text-quaternary)' },
+                    children: staged.ok ? staged.dir : (staged.error || 'failed')
+                  })
+                : null
+            ]
           })
         : null
     ]
   })
 }
+
+function ContributionsPanel() {
+  const [days, setDays] = useState(60)
+  const [data, setData] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let live = true
+    setBusy(true)
+    ContributionsPanel.__api
+      .contributions(days)
+      .then(payload => {
+        if (!live) return
+        setData(payload)
+        setError(payload && payload.ok === false ? payload.error || 'scan failed' : '')
+      })
+      .catch(err => { if (live) setError(String(err && err.message ? err.message : err)) })
+      .finally(() => { if (live) setBusy(false) })
+    return () => { live = false }
+  }, [days])
+
+  const items = (data && data.candidates) || []
+  const counts = (data && data.counts) || {}
+
+  return jsxs('div', {
+    className: 'rounded border p-3',
+    style: { borderColor: 'var(--ui-stroke-secondary)' },
+    children: [
+      jsxs('div', {
+        className: 'flex flex-wrap items-center justify-between gap-3',
+        children: [
+          jsxs('div', {
+            children: [
+              jsx('div', { className: 'text-sm font-medium text-foreground', children: 'Skills worth sharing' }),
+              jsx('div', {
+                className: 'mt-0.5 text-[0.68rem] text-(--ui-text-quaternary)',
+                children: 'written by the agent itself · screened for private paths, hosts and accounts · nothing is published'
+              })
+            ]
+          }),
+          jsxs('div', {
+            className: 'flex items-center gap-1',
+            children: [
+              ...CONTRIB_RANGES.map(d =>
+                jsx('button', {
+                  key: d,
+                  onClick: () => setDays(d),
+                  className: 'rounded px-2 py-1 text-[0.66rem]',
+                  style: {
+                    border: '1px solid var(--ui-stroke-tertiary)',
+                    color: days === d ? 'var(--ui-text-primary)' : 'var(--ui-text-tertiary)',
+                    background: days === d ? 'var(--ui-bg-tertiary)' : 'transparent',
+                    whiteSpace: 'nowrap'
+                  },
+                  children: `${d}d`
+                }, d)
+              ),
+              jsx('span', {
+                className: 'ml-1 text-[0.64rem] text-(--ui-text-quaternary)',
+                children: busy ? 'scanning…' : `${items.length} shown`
+              })
+            ]
+          })
+        ]
+      }),
+      error
+        ? jsx('div', { className: 'mt-2 text-[0.68rem] text-(--ui-text-tertiary)', children: error })
+        : null,
+      items.length
+        ? jsx('div', {
+            className: 'mt-3 flex flex-col gap-2',
+            children: items.slice(0, 8).map((item, i) => jsx(ContributionCard, { item, days }, `${item.name}-${i}`))
+          })
+        : null,
+      jsxs('div', {
+        className: 'mt-2 flex justify-between text-[0.6rem] text-(--ui-text-quaternary)',
+        children: [
+          jsx('div', {
+            children: `${(data && data.total_agent_skills) || 0} agent-written · ${counts.publish || 0} publishable · ${counts.scrub || 0} need scrubbing · ${counts.private || 0} keep private`
+          }),
+          jsx('div', { children: 'deterministic screen — no tokens spent' })
+        ]
+      })
+    ]
+  })
+}
+
+ContributionsPanel.__api = null
 
 // The loader is injected at register() time, where ctx.rest exists.
 ScoutPage.__api = null
@@ -428,6 +613,7 @@ export default {
     ScoutPage.__api = api
     ScoutChip.__api = api
     RecommendPanel.__api = api
+    ContributionsPanel.__api = api
     ctx.register({ id: 'page', area: ROUTES_AREA, data: { path: ROUTE }, render: () => jsx(ScoutPage, {}) })
     ctx.register({
       id: 'nav',

@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 _PLUGIN_DIR = Path(__file__).resolve().parent.parent
 _CORE_PATH = _PLUGIN_DIR / "core.py"
@@ -27,6 +28,15 @@ def _core():
 def _recommend_mod():
     spec = importlib.util.spec_from_file_location(
         "pluginscout_recommend_api", _PLUGIN_DIR / "recommend.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    mod._CORE = _core()
+    return mod
+
+
+def _contrib_mod():
+    spec = importlib.util.spec_from_file_location(
+        "pluginscout_contrib_api", _PLUGIN_DIR / "skills_contrib.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     mod._CORE = _core()
@@ -67,6 +77,28 @@ async def refresh():
 async def gaps(limit: int = 20):
     core = _core()
     return await asyncio.to_thread(core.gaps, max(1, min(200, limit)))
+
+
+@router.get("/contributions")
+async def contributions(days: int = 60, limit: int = 12):
+    """Screen agent-written skills: publishable, needs scrubbing, or keep private."""
+    mod = _contrib_mod()
+    return await asyncio.to_thread(mod.run, max(1, min(3650, days)), max(1, min(50, limit)))
+
+
+@router.post("/contributions/package")
+async def contributions_package(payload: dict | None = None):
+    """Stage a submission bundle in the plugin's outbox. Refuses anything it called private."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        return JSONResponse({"ok": False, "error": "name is required"}, status_code=400)
+    try:
+        days = max(1, min(3650, int(payload.get("days") or 60)))
+    except (TypeError, ValueError):
+        days = 60
+    mod = _contrib_mod()
+    return await asyncio.to_thread(mod.package, name, days)
 
 
 @router.get("/health")

@@ -61,8 +61,12 @@ wd_html = "".join(
 
 _panel_html = Path("/home/josh/.hermes/cache/scratch/panel.html")
 _panel_css = Path("/home/josh/.hermes/cache/scratch/panel.css")
+_contrib_html = Path("/home/josh/.hermes/cache/scratch/contrib_panel.html")
+_contrib_css = Path("/home/josh/.hermes/cache/scratch/contrib_panel.css")
 panel = _panel_html.read_text() if _panel_html.exists() else ""
 panel_css = _panel_css.read_text() if _panel_css.exists() else ""
+contrib_panel = _contrib_html.read_text() if _contrib_html.exists() else ""
+contrib_css = _contrib_css.read_text() if _contrib_css.exists() else ""
 
 gap_rows = "\n".join(
     f'''<div class="grow">
@@ -101,7 +105,7 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
   .gcol .gapcell {{ width:13px; height:13px; border-radius:3px; }}
   .gcol .zero {{ background: color-mix(in srgb, var(--fg4) 22%, transparent); }}
   .gcol .empty {{ background: transparent; }}
-  .stats {{ display:grid; grid-template-columns:repeat(4,1fr); gap:18px;
+  .stats {{ display:grid; grid-template-columns:repeat(3,1fr); gap:18px;
             border:1px solid var(--stroke); border-radius:8px; padding:14px 16px; margin:20px 0 22px; }}
   .stat .label {{ font-size:10.5px; color:var(--fg4); }}
   .stat .value {{ font-size:19px; font-weight:600; margin-top:4px; line-height:1; }}
@@ -119,6 +123,7 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
              font-size:11px; color:var(--fg3); background:var(--bg2); position:fixed; bottom:0; left:0; right:0; }}
   .status b {{ color:var(--fg2); font-weight:500; }}
 {panel_css}
+{contrib_css}
 </style>
 <div class="app">
   <div class="side">
@@ -141,12 +146,11 @@ DOC = f"""<!doctype html><meta charset="utf-8"><title>Scout</title>
     <div class="stats">
       <div class="stat"><div class="label">gap events</div><div class="value">{field['total']}</div><div class="hint">measured, not inferred</div></div>
       <div class="stat"><div class="label">active days</div><div class="value">{field['active_days']}</div><div class="hint">peak {field['max']}/day</div></div>
-      <div class="stat"><div class="label">things lacking</div><div class="value">{report['gaps']['total']}</div><div class="hint">{report['gaps']['events']} occurrences</div></div>
+      <div class="stat"><div class="label">peak day</div><div class="value">{field['max']}</div><div class="hint">most gaps in one day</div></div>
       <div class="stat"><div class="label">sources</div><div class="value">{len(sources)}</div><div class="hint">{' · '.join(sources)}</div></div>
     </div>
     {panel}
-    <div class="section">What keeps going missing</div>
-    {gap_rows}
+    {contrib_panel}
     <div class="foot">
       <span>{report['catalog']['entries']} catalog entries · {report['headline']['matched_skills']} of {report['headline']['total_skills']} skills overlap a plugin</span>
       <span>read-only · no LLM in the matching path</span>
