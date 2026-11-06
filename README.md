@@ -55,6 +55,20 @@ Generated from a one-line description on this machine:
 Then imported and registered: 2 tools with correct model-facing schemas, 1 hook, handlers that
 return `{"ok": false, "error": "config.url is not set"}` instead of raising.
 
+## Which model builds the plugins
+
+The user's own. The model call happens **inside a tool call, inside a turn** — `lazyplugin_create` is
+an ordinary tool, so the host resolves whatever model and credential that profile has: API key,
+OAuth proxy, cloud or local. The plugin holds no key, names no provider, and shells out to nothing.
+
+That is also what makes it distributable. Install it on any profile and the agent already knows how
+to build plugins; nothing to configure and nothing to leak.
+
+The desktop page is UI, not the builder. When it cannot reach a turn it writes the request to
+`$HERMES_HOME/lazy-plugin/requests/`, and `lazyplugin_pending` hands it to the agent on the next
+message. A dashboard request has no turn, so the host will not resolve credentials there — the page
+queues instead of pretending, which is the correct behaviour rather than a workaround.
+
 ## Publishing to the community
 
 There is no upload endpoint and no self-serve registry. The catalog's rule 1 is a **human-merged
