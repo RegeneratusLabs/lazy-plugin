@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-agent-8'
+const BUILD = 'cat-agent-9'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -46,6 +46,7 @@ function makeApi(ctx) {
     prefill: idea => rest('/create/prefill', { method: 'POST', body: { idea } }),
     request: payload => rest('/agent/request', { method: 'POST', body: payload }),
     pending: () => rest('/agent/pending'),
+    remove: name => rest('/created/remove', { method: 'POST', body: { name } }),
     answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
@@ -466,6 +467,7 @@ function CreatorPanel() {
   const [out, setOut] = useState(null)
   const [error, setError] = useState('')
   const [prefill, setPrefill] = useState(null)
+  const [handoff, setHandoff] = useState('')
 
   useEffect(() => {
     let live = true
@@ -539,12 +541,7 @@ function CreatorPanel() {
             fail(((payload && payload.problems) || []).join(' · ') || 'could not hand this to the agent')
             return
           }
-          CreatorPanel.__api
-            .prefill(idea.trim())
-            .then(filled => {
-              if (filled && filled.answers) CreatorPanel.__setPrefill(filled.answers)
-            })
-            .catch(() => {})
+          setHandoff(payload.prompt || '')
           setBusy(false)
           setStage('')
           setError('handed to the agent — say “build the plugin I queued” in chat, or it will pick it '
@@ -704,10 +701,21 @@ function CreatorPanel() {
         ]
       }),
       error
-        ? jsx('div', {
-            className: 'mt-2 text-[0.68rem]',
+        ? jsxs('div', {
+            className: 'mt-2 flex flex-wrap items-center gap-2 text-[0.68rem]',
             style: { color: 'var(--ui-text-tertiary)' },
-            children: error
+            children: [
+              jsx('span', { children: error }),
+              handoff
+                ? jsx(TileButton, {
+                    onClick: () => {
+                      if (navigator.clipboard) navigator.clipboard.writeText(handoff)
+                      setError('copied — paste it into chat and the agent will build it')
+                    },
+                    children: 'copy the request for chat'
+                  })
+                : null
+            ]
           })
         : null,
       out ? jsx(Built, { out }) : null
@@ -818,6 +826,7 @@ function PluginTile({ plugin, onChanged }) {
   const [busy, setBusy] = useState('')
   const [note, setNote] = useState('')
   const [editing, setEditing] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
   function install() {
     setBusy('install')
@@ -906,6 +915,22 @@ function PluginTile({ plugin, onChanged }) {
           jsx(TileButton, {
             onClick: () => setEditing(value => !value),
             children: editing ? 'close' : 'edit'
+          }),
+          jsx(TileButton, {
+            onClick: () => {
+              if (!confirming) { setConfirming(true); return }
+              setBusy('remove')
+              CreatorPanel.__api
+                .remove(plugin.name)
+                .then(result => {
+                  if (result && result.ok) { if (onChanged) onChanged(); return }
+                  setNote((result && result.error) || 'could not remove it')
+                })
+                .catch(err => setNote(String(err && err.message ? err.message : err)))
+                .finally(() => setBusy(''))
+            },
+            disabled: !!busy || plugin.installed,
+            children: busy === 'remove' ? 'removing…' : confirming ? 'sure?' : 'remove'
           }),
           plugin.published
             ? jsx(ExtLink, { href: plugin.published.repo, children: 'repo ↗' })

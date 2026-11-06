@@ -395,6 +395,22 @@ def _write_created_file(name: str, path: str, content: str) -> dict:
             "validated": bool(check.get("ok"))}
 
 
+@router.post("/created/remove")
+async def remove_created(payload: dict | None = None):
+    """Delete one generated bundle. Confined to the outbox; a publish is not a backup."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    bundle = _bundle(name)
+    if bundle is None:
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    installed = (_core().hermes_home() / "plugins" / name)
+    if installed.is_symlink() or installed.exists():
+        return {"ok": False, "error": f"{name} is installed — remove the link in ~/.hermes/plugins first"}
+    import shutil as _shutil
+    _shutil.rmtree(bundle)
+    return {"ok": True, "removed": str(bundle)}
+
+
 @router.post("/created/install")
 async def install_created(payload: dict | None = None):
     """Link a generated plugin into the profile. Re-validates first; refuses to overwrite."""
