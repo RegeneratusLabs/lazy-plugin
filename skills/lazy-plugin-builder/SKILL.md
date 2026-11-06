@@ -10,10 +10,14 @@ never claim it works without the validator saying so.
 
 ## First, check the queue
 
-The Lazy Plugin page cannot start a turn, so a description typed there is written to
-`$HERMES_HOME/lazy-plugin/requests/`. If the user says they queued a plugin, or mentions the page,
-call `lazyplugin_pending` first and build what is listed. When a request names no URL, path or
-command, ask that one question instead of building a tool that does nothing.
+A build from the page usually arrives here as a turn, so the description is the user message you
+already have. Only when the surface has no chat to hand a turn to (a browser tab, a phone) does the
+page fall back to writing the request into `$HERMES_HOME/lazy-plugin/requests/` — if the user says
+they queued one, call `lazyplugin_pending` first and build what is listed. When a request names no
+URL, path or command, ask that one question instead of building a tool that does nothing.
+
+The page dispatches whatever lands itself, so do not claim success on your own word: end with the
+name, the validate line and the dispatch line, and let the verdict speak.
 
 ## The loop
 

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-5'
+const BUILD = 'cradle-6'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -254,6 +254,39 @@ function makeApi(ctx) {
   }
 }
 
+// What the page asks the agent to do, when the build runs as a chat turn. The rules are the same
+// ones the deterministic path enforces in code — here they are stated so the reader of the turn
+// can see them, and the gate below still decides whether anything ships.
+function chatPrompt(payload) {
+  const target = payload.source_name
+    ? `Source ${payload.source_kind}: "${payload.source_name}" — read it before you design anything ` +
+      `(skill_view for a skill, or lazyplugin_pending / the cron job's own file).`
+    : `The job, as described: ${payload.idea}`
+  return [
+    'Build one plugin for Cat\'s Cradle (the lazy-plugin page). Follow the lazy-plugin-builder ' +
+      'skill exactly — load it first with skill_view; its body is the brief, not a suggestion.',
+    '',
+    target,
+    '',
+    'Hard rules:',
+    '1. Spec first, in words: a lowercase-hyphenated name that says what it acts on, 1–3 tools, and ' +
+      'for each tool: what it does, what it reads or fetches (URL / path / argv), what it returns, ' +
+      'and whether it needs an API key. Show me that spec before you build.',
+    '2. Code comes from templates only: call lazyplugin_create with that spec. Never hand-write ' +
+      '__init__.py or plugin.yaml. Handler bodies are one of four shapes — command, http, file, stub.',
+    '3. Every http tool needs a request.url; every command tool needs a target (the argv); every ' +
+      'file tool needs a target or a declared `path` parameter. A tool with no target is refused, ' +
+      'and rightly so.',
+    '4. Never install anything, never touch ~/.hermes/plugins, never edit the catalog. The bundle ' +
+      'stays in ~/.hermes/lazy-plugin/created/<name>/ and I decide about installing.',
+    '5. lazyplugin_create returns a validation line and a dispatch report. The bundle counts as ' +
+      'done only when the dispatch verdict is `works`. If it is not, fix the spec (target, params, ' +
+      'projection) and call lazyplugin_create again under a new name — or stop and quote me the ' +
+      'exact failing line.',
+    '6. End your reply with three lines: the plugin name, the validate line, the dispatch line.'
+  ].join('\n')
+}
+
 // The gateway RPC the desktop app itself uses to start a turn: `session.create` mints a real
 // runtime id, then `prompt.submit { session_id, text }` writes the user row and starts the turn.
 // This needs no mounted composer and no focus, so it works from a plugin page.
@@ -469,6 +502,7 @@ function Ledger({ out }) {
   const spec = out.spec || {}
   const tools = spec.tools || []
   const files = out.files || []
+  const fileCount = out.file_count != null ? out.file_count : files.length
   const verdict = verdictOf(smoke)
   const [action, setAction] = useState(null)
   const [busyAction, setBusyAction] = useState('')
@@ -537,10 +571,10 @@ function Ledger({ out }) {
           }, 'spec'),
           jsx(LedgerRow, {
             label: 'files',
-            mark: files.length ? '✓' : '✗',
-            tone: files.length ? '' : 'fail',
-            value: `${files.length} written`,
-            sub: [files.join('  ')]
+            mark: fileCount ? '✓' : '✗',
+            tone: fileCount ? '' : 'fail',
+            value: `${fileCount} written`,
+            sub: files.length ? [files.join('  ')] : []
           }, 'files'),
           jsx(LedgerRow, {
             label: 'validate',
@@ -724,6 +758,7 @@ function CreatorPanel() {
   const [stage, setStage] = useState('')
   const [out, setOut] = useState(null)
   const [error, setError] = useState('')
+  const [note, setNote] = useState('')
   const [prefill, setPrefill] = useState(null)
   const [handoff, setHandoff] = useState('')
   const [elapsed, setElapsed] = useState(0)
@@ -853,6 +888,78 @@ function CreatorPanel() {
       .catch(err => fail(String(err && err.message ? err.message : err)))
   }
 
+  // The build as a visible turn. The tile is not trusted when it appears: this page dispatches it
+  // itself, so the verdict is never taken from the agent's word.
+  function buildInChat() {
+    setNote('')
+    if (CreatorPanel.__building) {
+      fail('a build is already running — it lands in Built so far when it finishes')
+      return
+    }
+    const payload = {
+      idea: idea.trim() || (sourceName ? `Turn the ${kind} "${sourceName}" into a plugin.` : ''),
+      source_kind: sourceName ? kind : '',
+      source_name: sourceName
+    }
+    CreatorPanel.__building = { at: Date.now(), idea: payload.idea }
+    setLatch(CreatorPanel.__building)
+    setBusy(true)
+    setOut(null)
+    setError('')
+    setStage('handing this to your agent…')
+    setStageAt(Date.now() / 1000)
+
+    // Baseline the shelf first, so the tile we watch for is genuinely new.
+    CreatorPanel.__api
+      .created()
+      .then(payload => { CreatorPanel.__seen = ((payload && payload.created) || []).map(row => row.name) })
+      .catch(() => { CreatorPanel.__seen = [] })
+      .then(() => submitToChat(chatPrompt(payload)))
+      .then(result => {
+        if (result && result.ok) {
+          setStage('your agent is building it in chat — the tile lands when the dispatch passes')
+          setStageAt(Date.now() / 1000)
+          pollForTile(null)
+          return
+        }
+        // No chat on this surface (a browser, a phone): the fixed templates still ship a plugin.
+        CreatorPanel.__building = null
+        setLatch(null)
+        setBusy(false)
+        setStage('')
+        setStageAt(0)
+        setNote(result && result.stage ? `no chat here (${result.stage}) — using the fixed templates` : '')
+        build()
+      })
+      .catch(err => fail(String(err && err.message ? err.message : err)))
+  }
+
+  // The agent's bundle is checked the way any bundle is: dispatch it, then show the ledger.
+  function adoptTile(row) {
+    const handWritten = !row.smoke
+    CreatorPanel.__api
+      .smokeTest(row.name)
+      .then(result => {
+        const smoke = (result && result.smoke) || row.smoke || { verdict: 'unchecked' }
+        setOut({
+          name: row.name,
+          dir: row.dir,
+          file_count: row.files,
+          files: [],
+          spec: { tools: (row.tools || []).map(name => ({ name })) },
+          validation: { ok: row.validated, tail: row.validation || [] },
+          smoke,
+          headline: (result && result.headline) || ''
+        })
+        if (handWritten) {
+          setError('that bundle appeared without a dispatch report, so the agent wrote it by hand — ' +
+            'the dispatch below is the only gate it has passed')
+        }
+        if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+      })
+      .catch(err => setError(`the tile landed but could not be dispatched: ${err && err.message ? err.message : err}`))
+  }
+
   function pollForTile(runId) {
     let waited = 0
     const tick = () => {
@@ -865,12 +972,17 @@ function CreatorPanel() {
             CreatorPanel.__seen = rows.map(row => row.name)
             setBusy(false)
             setStage('')
-            setError('')
-            if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+            setStageAt(0)
+            adoptTile(landed)
             return
           }
           waited += 3000
           if (waited > 300000) {
+            if (!runId) {
+              fail('no tile yet — the chat turn may still be working. Tell me to keep watching, ' +
+                'or hit Reload desktop plugins once it lands')
+              return
+            }
             CreatorPanel.__api
               .runState(runId)
               .then(state => fail('no plugin yet — the agent said: '
@@ -886,6 +998,8 @@ function CreatorPanel() {
   }
 
   function build() {
+    setNote('')
+    setStageAt(Date.now() / 1000)
     if (CreatorPanel.__building) {
       fail('a build is already running — it lands in Built so far when it finishes')
       return
@@ -984,8 +1098,16 @@ function CreatorPanel() {
       jsxs('div', {
         style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px', marginTop: '10px' },
         children: [
-          jsx(TileButton, { onClick: build, disabled: !canBuild, primary: canBuild,
-            children: busy ? 'making it…' : 'make it' }),
+          jsx(TileButton, { onClick: buildInChat, disabled: !canBuild, primary: canBuild,
+            children: busy ? 'making it…' : 'make it in chat' }),
+          !busy
+            ? jsx('button', {
+                className: 'cc-example',
+                title: 'skip the agent and let the fixed templates render the spec',
+                onClick: build,
+                children: 'or run the fixed templates'
+              })
+            : null,
           sourceName
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
@@ -1011,7 +1133,10 @@ function CreatorPanel() {
                 className: 'cc-note',
                 children: 'a build from this page is still running — it lands in Built so far'
               })
-            : null
+            : null,
+          !busy && note
+            ? jsx('span', { className: 'cc-note', children: note })
+            : null,
         ]
       }),
       error
