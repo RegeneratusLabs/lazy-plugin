@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-agent-11'
+const BUILD = 'cat-rpc-12'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -55,23 +55,43 @@ function makeApi(ctx) {
   }
 }
 
-function submitToChat(prompt) {
-  const composer = host && host.composer
-  if (!composer || typeof composer.submit !== 'function') return false
-  const atom = host.state && host.state.focusedSessionId
+// The gateway RPC the desktop app itself uses to start a turn: `session.create` mints a real
+// runtime id, then `prompt.submit { session_id, text }` writes the user row and starts the turn.
+// This needs no mounted composer and no focus, so it works from a plugin page.
+async function submitToChat(prompt) {
+  const request = host && host.request
+  if (typeof request !== 'function') return { ok: false, stage: 'host.request is missing' }
+  const atom = host && host.state && host.state.focusedSessionId
   const focused = atom && typeof atom.get === 'function' ? atom.get() : null
+  if (focused) {
+    try {
+      await request('prompt.submit', { profile, session_id: focused, text: prompt, source: 'desktop' })
+      return { ok: true }
+    } catch (err) { /* the focused session may be a stale tile: mint a fresh one below */ }
+  }
+  let created = null
+  const profileAtom = host && host.state && host.state.profile
+  const profile = profileAtom && typeof profileAtom.get === 'function' ? profileAtom.get() : undefined
+  for (const params of [
+    { profile, title: 'Lazy Plugin build', source: 'desktop' },
+    { source: 'desktop' }
+  ]) {
+    try {
+      created = await request('session.create', params)
+      if (created && created.session_id) break
+    } catch (err) { created = null }
+  }
+  const sessionId = created && created.session_id
+  if (!sessionId) return { ok: false, stage: 'session.create returned no session_id' }
   try {
-    if (focused && composer.submit(focused, prompt)) return true
-  } catch (err) { /* fall through to a fresh chat */ }
+    await request('prompt.submit', { profile, session_id: sessionId, text: prompt, source: 'desktop' })
+  } catch (err) {
+    return { ok: false, stage: 'prompt.submit failed: ' + String(err && err.message ? err.message : err) }
+  }
   try {
-    if (host.newChat) host.newChat()
-    // 'new' is answered only by the primary pane while it shows no session
-    if (composer.submit('new', prompt)) return true
-  } catch (err) { /* no pane to submit into */ }
-  try {
-    if (composer.submit(null, prompt)) return true
-  } catch (err) { /* nothing focused */ }
-  return false
+    if (host.openSession) host.openSession(sessionId)
+  } catch (err) { /* the chat opens on its own in the primary pane */ }
+  return { ok: true }
 }
 
 function LazyCat({ size = 30 }) {
@@ -540,7 +560,7 @@ function CreatorPanel() {
   // The provider key resolves inside a turn, not inside a background job: this process serves
   // several profiles and secrets are scoped per turn. So the page hands the build to the agent,
   // which calls lazyplugin_create itself, and the tile appears when it lands.
-  function buildWithAgent() {
+  async function buildWithAgent() {
     const prompt = `Use lazyplugin_create to build a plugin: ${idea.trim()}` +
       (sourceName ? ` — build it from the ${kind} "${sourceName}"` : '') +
       `. If the idea names nothing to fetch, read or run, ask me one question first instead of ` +
@@ -553,7 +573,13 @@ function CreatorPanel() {
     // composer.submit() has the same authority as typing, but it fails closed on its address:
     // a plugin page is focused, so there is no mounted composer behind `null`. Target the focused
     // session if one exists, otherwise open a fresh chat in the primary pane and submit there.
-    const accepted = submitToChat(prompt)
+    let sent = { ok: false, stage: '' }
+    try {
+      sent = await submitToChat(prompt)
+    } catch (err) {
+      sent = { ok: false, stage: String(err && err.message ? err.message : err) }
+    }
+    const accepted = !!(sent && sent.ok)
     if (accepted) {
       setStage('the agent is building it…')
       pollForTile()
@@ -571,8 +597,8 @@ function CreatorPanel() {
         setHandoff(payload.prompt || '')
         setBusy(false)
         setStage('')
-        setError('queued — this surface has no chat to send into. Say “build the plugin I queued” '
-          + 'in the app, or copy it below.')
+        setError((sent && sent.stage ? sent.stage + ' · ' : '')
+          + 'queued instead — say “build the plugin I queued” in the app, or copy it below.')
         if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
       })
       .catch(err => fail(String(err && err.message ? err.message : err)))
