@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-1'
+const BUILD = 'cradle-2'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -21,28 +21,169 @@ const CC = {
 }
 
 const CC_STYLE = `
-.cc-page { background: ${CC.ink}; color: ${CC.paper}; border: 1px solid ${CC.rule};
-  box-shadow: inset 0 0 0 3px ${CC.ink}, inset 0 0 0 4px ${CC.rule}; padding: 20px 22px; }
-.cc-wordmark { font-family: ${CC.serif}; font-size: 1.45rem; letter-spacing: .04em;
-  color: ${CC.paper}; }
-.cc-thesis { font-family: ${CC.mono}; font-size: .64rem; color: ${CC.muted}; letter-spacing: .02em; }
-.cc-counts { font-family: ${CC.mono}; font-size: .64rem; color: ${CC.muted}; }
-.cc-tile { background: ${CC.panel}; border: 1px solid ${CC.rule}; border-radius: 3px; }
-.cc-tile:hover { background: ${CC.panel2}; }
-.cc-meta { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; }
-.cc-pill { font-family: ${CC.mono}; font-size: .58rem; letter-spacing: .04em;
-  text-transform: lowercase; padding: 1px 6px; border-radius: 2px; border: 1px solid currentColor; }
-.cc-runs { color: ${CC.accent}; }
-.cc-key { color: ${CC.warn}; }
-.cc-broken { color: ${CC.fail}; }
-`
+.cc-page { --cc-hair: color-mix(in srgb, ${CC.rule} 55%, transparent);
+  background: ${CC.ink}; color: ${CC.paper}; font-size: .8rem; line-height: 1.45; }
+.cc-frame { border: 1px solid ${CC.rule}; padding: 3px; }
+.cc-inner { border: 1px solid ${CC.rule}; padding: 20px 22px 22px; position: relative; overflow: hidden; }
+.cc-sun { position: absolute; right: -30px; top: -78px; width: 360px; height: 230px; pointer-events: none;
+  background: repeating-conic-gradient(from -90deg at 50% 100%, ${CC.rule} 0 .34deg, transparent .34deg 3.6deg);
+  opacity: .12;
+  -webkit-mask-image: radial-gradient(circle at 50% 100%, #000 0 52%, transparent 80%);
+  mask-image: radial-gradient(circle at 50% 100%, #000 0 52%, transparent 80%); }
 
+.cc-hero { display: flex; align-items: flex-start; gap: 16px; position: relative; padding-bottom: 15px; }
+.cc-cat { flex: none; color: ${CC.paper}; opacity: .7; }
+.cc-hero-main { flex: 1; min-width: 0; }
+.cc-word { font-family: ${CC.serif}; font-size: 1.5rem; line-height: 1.1; letter-spacing: .02em;
+  color: ${CC.paper}; text-transform: uppercase; }
+.cc-thesis { font-family: ${CC.mono}; font-size: .65rem; color: ${CC.muted}; margin-top: 6px;
+  letter-spacing: .01em; }
+.cc-counts { font-family: ${CC.mono}; font-size: .65rem; color: ${CC.muted}; text-align: right;
+  white-space: nowrap; padding-top: 5px; }
+.cc-stamp { font-family: ${CC.mono}; font-size: .58rem; color: ${CC.muted}; opacity: .7;
+  text-align: right; margin-top: 6px; }
+.cc-rule { height: 1px; background: ${CC.rule}; }
+.cc-rule-gap { height: 3px; }
+
+.cc-section { display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin: 17px 0 9px; }
+.cc-h2 { font-family: ${CC.serif}; font-size: 1rem; letter-spacing: .02em; color: ${CC.paper}; }
+.cc-hint { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; }
+
+.cc-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-chip { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; background: transparent;
+  border: 1px solid ${CC.rule}; border-radius: 2px; padding: 2px 8px; cursor: pointer;
+  white-space: nowrap; }
+.cc-chip:hover { color: ${CC.paper}; background: ${CC.panel2}; }
+.cc-chip:focus-visible { outline: 1px solid ${CC.accent}; outline-offset: 1px; }
+.cc-chip.on { color: ${CC.accent}; border-color: ${CC.accent}; }
+
+.cc-area { width: 100%; resize: vertical; background: ${CC.panel}; color: ${CC.paper};
+  border: 1px solid ${CC.rule}; border-radius: 2px; padding: 8px 10px; font-size: .75rem;
+  font-family: inherit; outline: none; }
+.cc-area::placeholder { color: ${CC.muted}; opacity: .65; }
+.cc-area:focus { border-color: ${CC.accent}; }
+.cc-label { font-family: ${CC.mono}; font-size: .59rem; letter-spacing: .07em;
+  text-transform: uppercase; color: ${CC.muted}; }
+
+.cc-btn { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; background: transparent;
+  border: 1px solid ${CC.rule}; border-radius: 2px; padding: 3px 9px; cursor: pointer;
+  white-space: nowrap; }
+.cc-btn:hover:not(:disabled) { color: ${CC.paper}; border-color: ${CC.muted}; }
+.cc-btn:focus-visible { outline: 1px solid ${CC.accent}; outline-offset: 1px; }
+.cc-btn:disabled { opacity: .38; cursor: default; }
+.cc-btn.pri { color: ${CC.accent}; border-color: ${CC.accent}; }
+.cc-btn.pri:hover:not(:disabled) { color: ${CC.paper}; background: ${CC.panel2}; }
+
+.cc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 760px) { .cc-tiles { grid-template-columns: minmax(0, 1fr); } }
+.cc-tile { display: flex; flex-direction: column; gap: 5px; background: ${CC.panel};
+  border: 1px solid ${CC.rule}; border-radius: 3px; padding: 11px 12px; }
+.cc-tile:hover { background: ${CC.panel2}; }
+.cc-tile-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.cc-tile-title { font-family: ${CC.serif}; font-size: .94rem; line-height: 1.2; letter-spacing: .01em;
+  color: ${CC.paper}; }
+.cc-pill { font-family: ${CC.mono}; font-size: .59rem; letter-spacing: .04em; padding: 1px 6px;
+  border: 1px solid currentColor; border-radius: 2px; white-space: nowrap; }
+.cc-pill.runs { color: ${CC.accent}; }
+.cc-pill.key { color: ${CC.warn}; }
+.cc-pill.broken { color: ${CC.fail}; }
+.cc-pill.quiet { color: ${CC.muted}; }
+.cc-sentence { font-size: .68rem; color: ${CC.paper}; }
+.cc-desc { font-size: .7rem; color: ${CC.muted}; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.cc-meta { font-family: ${CC.mono}; font-size: .61rem; color: ${CC.muted}; display: flex;
+  flex-wrap: wrap; gap: 4px 6px; }
+.cc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px;
+  opacity: 0; transition: opacity .12s ease; }
+.cc-tile:hover .cc-actions, .cc-tile:focus-within .cc-actions { opacity: 1; }
+
+.cc-ledger { margin-top: 16px; border-top: 1px solid ${CC.rule}; padding-top: 12px; }
+.cc-ledger-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.cc-ledger-name { font-family: ${CC.serif}; font-size: .96rem; color: ${CC.paper}; }
+.cc-ledger-dir { font-family: ${CC.mono}; font-size: .58rem; color: ${CC.muted}; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.cc-rows { margin-top: 8px; display: flex; flex-direction: column; }
+.cc-row { display: grid; grid-template-columns: 4.4rem .9rem minmax(0, 1fr); gap: 8px;
+  align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--cc-hair); }
+.cc-row-label { font-family: ${CC.mono}; font-size: .61rem; color: ${CC.muted}; }
+.cc-row-mark { font-family: ${CC.mono}; font-size: .62rem; color: ${CC.muted}; }
+.cc-row-mark.fail { color: ${CC.fail}; }
+.cc-row-mark.warn { color: ${CC.warn}; }
+.cc-row-value { font-family: ${CC.mono}; font-size: .64rem; color: ${CC.paper}; min-width: 0;
+  overflow-wrap: anywhere; }
+.cc-row-sub { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; margin-top: 2px;
+  overflow-wrap: anywhere; }
+
+.cc-empty { display: flex; align-items: flex-start; gap: 18px; padding: 6px 0 2px; }
+.cc-empty-line { font-family: ${CC.serif}; font-size: 1.05rem; color: ${CC.paper}; }
+.cc-empty-copy { font-size: .72rem; color: ${CC.muted}; margin-top: 4px; max-width: 34rem; }
+.cc-example { font-family: ${CC.mono}; font-size: .62rem; color: ${CC.paper}; background: transparent;
+  border: 0; border-bottom: 1px dashed ${CC.rule}; padding: 0 0 1px; margin-top: 10px; cursor: pointer;
+  text-align: left; }
+.cc-example:hover { color: ${CC.accent}; border-color: ${CC.accent}; }
+.cc-error { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.warn}; margin-top: 10px; }
+.cc-note { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; }
+.cc-details { margin-top: 14px; border-top: 1px solid var(--cc-hair); padding-top: 10px; }
+.cc-details summary { font-family: ${CC.mono}; font-size: .58rem; letter-spacing: .06em;
+  text-transform: uppercase; color: ${CC.muted}; cursor: pointer; }
+.cc-details summary:hover { color: ${CC.paper}; }
+.cc-details[open] summary { margin-bottom: 9px; color: ${CC.paper}; }
+.cc-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+.cc-field { display: flex; flex-direction: column; gap: 3px; }
+.cc-preview { font-family: ${CC.mono}; font-size: .58rem; color: ${CC.muted}; margin-top: 8px;
+  border-left: 1px solid ${CC.rule}; padding-left: 8px; }
+.cs-link { color: ${CC.accent}; text-decoration: none; border-bottom: 1px solid ${CC.rule}; }
+`
 
 const KIND_LABEL = {
   command: 'runs a command',
   http: 'calls an endpoint',
   file: 'reads/writes a path',
   stub: 'scaffold'
+}
+
+// Colour is a hint; the sentence carries the fact (DESIGN.md, verdict vocabulary).
+const VERDICT = {
+  works: { word: 'runs', tone: 'runs' },
+  'needs-key': { word: 'needs a key', tone: 'key' },
+  upstream: { word: 'upstream', tone: 'key' },
+  scaffold: { word: 'scaffold', tone: 'broken' },
+  broken: { word: 'broken', tone: 'broken' },
+  unchecked: { word: 'unchecked', tone: 'quiet' }
+}
+
+const FALLBACK_SENTENCE = {
+  works: 'the handler returned real results',
+  'needs-key': 'sound package, needs a key',
+  upstream: 'request works, far end refused it',
+  scaffold: 'broken: scaffold — handler never got written',
+  broken: 'broken: the loader raised',
+  unchecked: 'not dispatched yet — test it'
+}
+
+function verdictOf(smoke) {
+  const key = (smoke && smoke.verdict) || 'unchecked'
+  return { key, ...(VERDICT[key] || VERDICT.unchecked) }
+}
+
+function sentenceOf(smoke) {
+  if (smoke && smoke.headline) return smoke.headline
+  return FALLBACK_SENTENCE[(smoke && smoke.verdict) || 'unchecked'] || FALLBACK_SENTENCE.unchecked
+}
+
+function countsLine(rows) {
+  const tally = { runs: 0, key: 0, broken: 0 }
+  rows.forEach(row => {
+    const tone = verdictOf(row.smoke).tone
+    if (tone === 'runs') tally.runs += 1
+    else if (tone === 'key') tally.key += 1
+    else if (tone === 'broken') tally.broken += 1
+  })
+  const parts = [`${tally.runs} run`]
+  if (tally.key) parts.push(`${tally.key} ${tally.key === 1 ? 'needs' : 'need'} a key`)
+  if (tally.broken) parts.push(`${tally.broken} broken`)
+  return parts.join(' · ')
 }
 
 function makeApi(ctx) {
@@ -90,6 +231,8 @@ function makeApi(ctx) {
 async function submitToChat(prompt) {
   const request = host && host.request
   if (typeof request !== 'function') return { ok: false, stage: 'host.request is missing' }
+  const profileAtom = host && host.state && host.state.profile
+  const profile = profileAtom && typeof profileAtom.get === 'function' ? profileAtom.get() : undefined
   const atom = host && host.state && host.state.focusedSessionId
   const focused = atom && typeof atom.get === 'function' ? atom.get() : null
   if (focused) {
@@ -99,8 +242,6 @@ async function submitToChat(prompt) {
     } catch (err) { /* the focused session may be a stale tile: mint a fresh one below */ }
   }
   let created = null
-  const profileAtom = host && host.state && host.state.profile
-  const profile = profileAtom && typeof profileAtom.get === 'function' ? profileAtom.get() : undefined
   for (const params of [
     { profile, title: "Cat's Cradle build", source: 'desktop' },
     { source: 'desktop' }
@@ -123,20 +264,44 @@ async function submitToChat(prompt) {
   return { ok: true }
 }
 
-function LazyCat({ size = 30 }) {
+// The plate's cat: a plump tabby asleep on a cushion, engraved as one hairline line. Ink is
+// `--cc-paper` at 70% on the dark ground (DESIGN.md, "the cat").
+function Cat({ size = 96 }) {
   return jsx('svg', {
     width: size,
-    height: size,
-    viewBox: '0 0 32 32',
+    height: Math.round(size * 0.72),
+    viewBox: '0 0 140 100',
     fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    className: 'cc-cat',
     'aria-hidden': 'true',
     children: [
-      jsx('path', { d: 'M4 26c0-6 4-10 12-10s12 4 12 10z', fill: 'color-mix(in srgb, var(--ui-accent) 22%, transparent)', stroke: 'var(--ui-accent)', strokeWidth: 1.2 }),
-      jsx('path', { d: 'M7 17 5 9l6 3M25 17l2-8-6 3', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinejoin: 'round' }),
-      jsx('circle', { cx: 12, cy: 18.5, r: 1.1, fill: 'var(--ui-accent)' }),
-      jsx('circle', { cx: 20, cy: 18.5, r: 1.1, fill: 'var(--ui-accent)' }),
-      jsx('path', { d: 'M15 21h2', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinecap: 'round' }),
-      jsx('path', { d: 'M26 24c3 0 4 2 4 4', stroke: 'var(--ui-accent)', strokeWidth: 1.2, strokeLinecap: 'round', opacity: 0.7 })
+      jsx('path', { d: 'M22 88c14-7 82-7 96 0', strokeWidth: 0.7, opacity: 0.8 }, '26645'),
+      jsx('path', { d: 'M57 50C64 32 91 27 106 39C119 50 118 69 103 77C88 84 63 82 52 76', strokeWidth: 1.55 }, '18969'),
+      jsx('path', { d: 'M27 55C29 44 37 39 46 40C55 41 61 48 58 56C56 65 48 71 39 72C32 73 26 69 26 63C25 60 26 57 27 55', strokeWidth: 1.5 }, '48677'),
+      jsx('path', { d: 'M32 47C29 41 27 36 26 32C32 35 38 38 41 40', strokeWidth: 1.35 }, '63260'),
+      jsx('path', { d: 'M44 41C49 37 54 34 57 33C57 38 57 44 56 47', strokeWidth: 1.35 }, '84975'),
+      jsx('path', { d: 'M33 56c2 3 6 3 8 1', strokeWidth: 1.0 }, '98095'),
+      jsx('path', { d: 'M46 55c2 3 6 3 8 1', strokeWidth: 1.0 }, '6398'),
+      jsx('path', { d: 'M37 62h5l-2.5 3v3c-2 1.4-4 1.4-5.5 0M39.5 68c2 1.4 4 1.4 5.5 0', strokeWidth: 0.8 }, '3792'),
+      jsx('path', { d: 'M32 64c-4-1.2-7-1.6-9-1.2M32 67c-3.4.8-6 2.2-8 3.6', strokeWidth: 0.5, opacity: 0.65 }, '29580'),
+      jsx('path', { d: 'M46 63c3.4-1.2 6.4-1.6 8.4-1.2M46 66c3 1 5.4 2 7.2 3.2', strokeWidth: 0.5, opacity: 0.65 }, '85000'),
+      jsx('path', { d: 'M30 75c7 4 17 4 24 0', strokeWidth: 0.9 }, '85131'),
+      jsx('path', { d: 'M35 78c5 2.6 11 2.6 16 0', strokeWidth: 0.5, opacity: 0.6 }, '9606'),
+      jsx('path', { d: 'M58 69c5 2.6 11 2.6 16 0.6M73 72c4 1.6 8 0.8 12-1', strokeWidth: 0.5, opacity: 0.6 }, '29849'),
+      jsx('path', { d: 'M92 78l4 4M97 76l4 4M86 80l3 4', strokeWidth: 0.45, opacity: 0.45 }, '48874'),
+      jsx('path', { d: 'M44 71l2 4M49 73l2 4', strokeWidth: 0.45, opacity: 0.45 }, '91588'),
+      jsx('path', { d: 'M104 73c10 4 14 10 6 13-9 3-25 2-39-1-6-1-11-2-16-4', strokeWidth: 1.45 }, '46661'),
+      jsx('g', { fill: 'currentColor', stroke: 'none', opacity: 0.6, children: [
+        jsx('path', { d: 'M66 32c6 10 7 21 5 30-3-9-5-20-5-30z' }, '67195'),
+        jsx('path', { d: 'M77 29c8 11 9 24 6 34-4-11-6-23-6-34z' }, '4890'),
+        jsx('path', { d: 'M88 29c8 12 9 25 6 35-4-11-6-24-6-35z' }, '66406'),
+        jsx('path', { d: 'M98 33c6 10 7 20 5 29-3-9-5-19-5-29z' }, '14318'),
+        jsx('path', { d: 'M108 46c4 6 4 12 2 17-2-5-3-11-2-17z' }, '80475'),
+      ] }, 'stripes'),
     ]
   })
 }
@@ -170,20 +335,6 @@ function pollJob(api, job, onStage) {
   })
 }
 
-function ToolLine({ tool }) {
-  return jsxs('div', {
-    className: 'flex items-baseline gap-2 text-[0.68rem]',
-    children: [
-      jsx('span', { className: 'font-mono text-(--ui-text-secondary)', children: tool.name }),
-      jsx('span', {
-        className: 'shrink-0 text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)',
-        children: KIND_LABEL[tool.kind] || tool.kind
-      }),
-      jsx('span', { className: 'truncate text-(--ui-text-quaternary)', children: tool.description })
-    ]
-  })
-}
-
 function ExtLink({ href, children }) {
   return jsx('a', {
     href,
@@ -192,64 +343,78 @@ function ExtLink({ href, children }) {
       if (host && host.openExternal) host.openExternal(href)
       else window.open(href, '_blank', 'noopener')
     },
-    className: 'underline',
-    style: { color: 'var(--ui-accent)', cursor: 'pointer' },
+    className: 'cs-link',
+    style: { cursor: 'pointer' },
     children
+  })
+}
+
+function TileButton({ onClick, disabled, primary, title, children }) {
+  return jsx('button', {
+    onClick,
+    disabled,
+    title,
+    className: primary ? 'cc-btn pri' : 'cc-btn',
+    children
+  })
+}
+
+function LedgerRow({ label, mark, tone, value, sub }) {
+  return jsxs('div', {
+    className: 'cc-row',
+    children: [
+      jsx('span', { className: 'cc-row-label', children: label }),
+      jsx('span', { className: tone ? `cc-row-mark ${tone}` : 'cc-row-mark', children: mark }),
+      jsxs('span', {
+        className: 'cc-row-value',
+        children: [
+          value,
+          ...(sub || []).map((line, index) =>
+            jsx('div', { className: 'cc-row-sub', children: line }, index))
+        ]
+      })
+    ]
   })
 }
 
 function PublishResult({ action, onPr }) {
   if (!action.ok) {
     return jsx('div', {
-      className: 'font-mono text-[0.62rem]',
+      className: 'cc-row-value',
+      style: { color: 'var(--cc-fail)' },
       children: action.error || action.stage || 'publishing failed'
     })
   }
   const lines = (action.steps || []).map(step =>
     jsxs('div', {
-      className: 'flex items-baseline gap-2',
+      style: { display: 'flex', gap: '8px' },
       children: [
-        jsx('span', { style: { color: step.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-          children: step.ok ? '✓' : '✗' }),
-        jsx('span', { className: 'w-[6.5rem] shrink-0 text-(--ui-text-quaternary)', children: step.step }),
-        jsx('span', {
-          className: 'truncate font-mono text-[0.6rem]',
-          children: (step.detail || []).join('  ')
-        })
+        jsx('span', { style: { color: step.ok ? CC.paper : CC.muted }, children: step.ok ? '✓' : '✗' }),
+        jsx('span', { style: { color: CC.muted, minWidth: '5.5rem' }, children: step.step }),
+        jsx('span', { children: (step.detail || []).join('  ') })
       ]
     }, step.step))
 
   return jsxs('div', {
+    className: 'cc-row-value',
     children: [
-      jsx('div', { className: 'flex flex-col gap-0.5', children: lines }),
-      jsxs('div', {
-        className: 'mt-1.5 font-mono text-[0.6rem]',
-        children: [
-          jsx('div', { children: `repo  ${action.repo}` }, 'r'),
-          jsx('div', { children: `sha   ${action.sha}` }, 's'),
-          jsx('div', { children: `entry ${action.entry}` }, 'e'),
-          jsx('div', { className: 'text-(--ui-text-quaternary)', children: `now installable anywhere: ${action.install_command}` }, 'i')
-        ]
-      }),
+      jsx('div', { style: { display: 'flex', flexDirection: 'column', gap: '2px' }, children: lines }),
+      jsxs('div', { style: { marginTop: '6px' }, children: [
+        jsx('div', { children: `repo   ${action.repo}` }, 'r'),
+        jsx('div', { children: `sha    ${action.sha}` }, 's'),
+        jsx('div', { children: `entry  ${action.entry}` }, 'e'),
+        jsx('div', { className: 'cc-row-sub', children: `installable anywhere: ${action.install_command}` }, 'i')
+      ] }),
       action.pr
-        ? jsxs('div', {
-            className: 'mt-1',
-            children: ['pull request  ', jsx(ExtLink, { href: action.pr, children: action.pr })]
-          }, 'pr')
+        ? jsx('div', { className: 'cc-row-sub', children: `pull request  ${action.pr}` }, 'pr')
         : null,
       (action.stage === 'pinned' || action.pr_error)
         ? jsxs('div', {
-            className: 'mt-1.5 flex flex-wrap items-center gap-2',
+            style: { marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
             children: [
-              jsx('button', {
-                onClick: onPr,
-                className: 'rounded px-2 py-0.5 text-[0.62rem]',
-                style: { border: '1px solid color-mix(in srgb, var(--ui-accent) 45%, transparent)',
-                  color: 'var(--ui-text-primary)', cursor: 'pointer' },
-                children: 'Open the catalog PR'
-              }),
+              jsx(TileButton, { onClick: onPr, children: 'open the catalog PR' }),
               jsx('span', {
-                className: 'text-[0.58rem] text-(--ui-text-quaternary)',
+                className: 'cc-row-sub',
                 children: action.pr_error
                   ? action.pr_error
                   : 'one PR to NousResearch/hermes-agent, reviewed by a maintainer'
@@ -261,8 +426,15 @@ function PublishResult({ action, onPr }) {
   })
 }
 
-function Built({ out }) {
+// The result card is a ledger: spec · files · validate · dispatch. Every row is monospace and
+// carries a tick or the exact failing line — never a bare "all good".
+function Ledger({ out }) {
   const check = out.validation || {}
+  const smoke = out.smoke || {}
+  const spec = out.spec || {}
+  const tools = spec.tools || []
+  const files = out.files || []
+  const verdict = verdictOf(smoke)
   const [action, setAction] = useState(null)
   const [busyAction, setBusyAction] = useState('')
 
@@ -291,110 +463,99 @@ function Built({ out }) {
       .catch(err => setAction({ kind: 'publish', ok: false, error: String(err && err.message ? err.message : err) }))
       .finally(() => setBusyAction(''))
   }
-  const meta = (out.draft && out.draft.meta) || {}
-  const metaLine = [meta.lane ? `${meta.lane} lane` : null,
-    meta.model ? meta.model : null,
-    meta.tokens ? `${meta.tokens} tokens` : null,
-    out.source && out.source.name ? `from ${out.source.kind}: ${out.source.name}` : null]
-    .filter(Boolean).join(' · ')
+
+  const failLine = (check.failures && check.failures[0])
+    || (check.tail || []).filter(line => line.trim()).slice(-1)[0]
+    || 'the validator rejected it'
+  const dispatchOk = ['works', 'needs-key', 'upstream'].includes(verdict.key)
+  const dispatchLine = smoke.verdict
+    ? `${verdict.word} · ${sentenceOf(smoke)}${smoke.seconds ? ` · ${Number(smoke.seconds).toFixed(1)}s` : ''}`
+    : 'not dispatched'
 
   return jsxs('div', {
-    className: 'mt-3 rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-secondary)' },
+    className: 'cc-ledger',
     children: [
       jsxs('div', {
-        className: 'flex flex-wrap items-baseline justify-between gap-2',
+        className: 'cc-ledger-head',
         children: [
           jsxs('div', {
-            className: 'flex items-baseline gap-2',
+            style: { display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 },
             children: [
-              jsx('span', { className: 'text-[0.85rem] font-medium text-foreground', children: out.name }),
-              jsx('span', {
-                className: 'text-[0.6rem] uppercase tracking-wide',
-                style: { color: check.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-                children: check.ok ? 'passes checks' : 'needs work'
-              })
+              jsx('span', { className: 'cc-ledger-name', children: out.name }),
+              jsx('span', { className: `cc-pill ${verdict.tone}`, children: verdict.word })
             ]
           }),
-          jsx('div', { className: 'truncate font-mono text-[0.6rem] text-(--ui-text-quaternary)', children: out.dir })
+          jsx('span', { className: 'cc-ledger-dir', children: out.dir })
         ]
       }),
-      metaLine
-        ? jsx('div', { className: 'mt-0.5 text-[0.6rem] text-(--ui-text-quaternary)', children: metaLine })
-        : null,
-      (out.spec && out.spec.tools)
-        ? jsx('div', {
-            className: 'mt-2 flex flex-col gap-0.5',
-            children: out.spec.tools.map(tool => jsx(ToolLine, { tool }, tool.name))
-          })
-        : null,
-      jsx('div', {
-        className: 'mt-2 flex flex-col gap-0.5 font-mono text-[0.62rem]',
-        children: (check.ok ? (check.tail || []) : (check.failures || check.tail || [])).map((line, i) =>
-          jsx('div', {
-            style: {
-              color: line.includes('✗') || line.includes('failed')
-                ? 'var(--ui-text-tertiary)'
-                : 'var(--ui-text-quaternary)'
-            },
-            children: line
-          }, i))
-      }),
-      out.files
-        ? jsx('div', {
-            className: 'mt-1.5 font-mono text-[0.6rem] text-(--ui-text-quaternary)',
-            children: out.files.join('  ·  ')
-          })
-        : null,
       jsxs('div', {
-        className: 'mt-2.5 flex flex-wrap items-center gap-2',
+        className: 'cc-rows',
         children: [
-          jsx('button', {
+          jsx(LedgerRow, {
+            label: 'spec',
+            mark: tools.length ? '✓' : '✗',
+            tone: tools.length ? '' : 'fail',
+            value: tools.length
+              ? `${tools.length} tool${tools.length === 1 ? '' : 's'} · ${tools.map(tool => tool.name).join(', ')}`
+              : 'no tools declared',
+            sub: tools.map(tool => `${tool.name} — ${KIND_LABEL[tool.kind] || tool.kind}`)
+          }, 'spec'),
+          jsx(LedgerRow, {
+            label: 'files',
+            mark: files.length ? '✓' : '✗',
+            tone: files.length ? '' : 'fail',
+            value: `${files.length} written`,
+            sub: [files.join('  ')]
+          }, 'files'),
+          jsx(LedgerRow, {
+            label: 'validate',
+            mark: check.ok ? '✓' : '✗',
+            tone: check.ok ? '' : 'fail',
+            value: check.ok
+              ? 'passed — no collisions, no core override, safe to load'
+              : 'failed',
+            sub: check.ok ? [] : [failLine]
+          }, 'validate'),
+          jsx(LedgerRow, {
+            label: 'dispatch',
+            mark: dispatchOk ? '✓' : '✗',
+            tone: dispatchOk ? '' : (verdict.key === 'unchecked' ? 'warn' : 'fail'),
+            value: dispatchLine
+          }, 'dispatch')
+        ]
+      }),
+      jsxs('div', {
+        className: 'cc-actions',
+        style: { opacity: 1, marginTop: '11px' },
+        children: [
+          jsx(TileButton, {
             onClick: () => act('install'),
             disabled: !check.ok || !!busyAction,
-            className: 'rounded px-2.5 py-1 text-[0.68rem] font-medium',
-            style: {
-              background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
-              color: 'var(--ui-text-primary)',
-              whiteSpace: 'nowrap',
-              cursor: check.ok ? 'pointer' : 'default',
-              opacity: check.ok ? 1 : 0.5
-            },
-            children: busyAction === 'install' ? 'Installing…' : 'Install it'
+            primary: !!check.ok,
+            children: busyAction === 'install' ? 'installing…' : 'install it'
           }),
-          jsx('button', {
+          jsx(TileButton, {
             onClick: () => act('publish'),
             disabled: !check.ok || !!busyAction,
-            className: 'rounded px-2 py-1 text-[0.66rem]',
-            style: {
-              border: '1px solid var(--ui-stroke-secondary)',
-              color: 'var(--ui-text-secondary)',
-              whiteSpace: 'nowrap',
-              cursor: check.ok ? 'pointer' : 'default',
-              opacity: check.ok ? 1 : 0.5
-            },
-            children: busyAction === 'publish' ? 'Publishing…' : 'Publish to community'
+            children: busyAction === 'publish' ? 'publishing…' : 'publish to community'
           }),
-          jsx('span', {
-            className: 'text-[0.6rem] text-(--ui-text-quaternary)',
-            children: 'nothing runs until you install it'
-          })
+          jsx('span', { className: 'cc-note', children: 'nothing runs until you install it' })
         ]
       }),
       action
-        ? jsxs('div', {
-            className: 'mt-2 rounded p-2 text-[0.64rem]',
-            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-secondary)' },
-            children: action.kind === 'publish' ? PublishResult({ action, onPr: () => act('publish', true) })
-              : jsxs('div', {
-                  className: 'font-mono text-[0.62rem]',
-                  children: action.ok
-                    ? [
-                        jsx('div', { children: `installed → ${action.installed}` }, 'a'),
-                        jsx('div', { className: 'mt-1 text-(--ui-text-quaternary)', children: action.next }, 'b')
-                      ]
-                    : (action.error || 'failed')
+        ? jsx('div', {
+            style: {
+              marginTop: '9px', paddingTop: '8px', borderTop: `1px solid ${CC.rule}`,
+              fontFamily: CC.mono, fontSize: '.6rem', color: CC.paper
+            },
+            children: action.kind === 'publish'
+              ? PublishResult({ action, onPr: () => act('publish', true) })
+              : jsx('div', {
+                  style: { fontFamily: CC.mono, fontSize: '.6rem' },
+                  children: jsx('div', {
+                    style: action.ok ? undefined : { color: CC.fail },
+                    children: action.ok ? `installed → ${action.installed}` : (action.error || 'failed')
+                  })
                 })
           })
         : null
@@ -463,15 +624,15 @@ function Questionnaire({ onResult, initial }) {
     const shared = {
       value,
       onChange: event => set(event.target.value),
-      className: 'w-full rounded border bg-transparent px-1.5 py-1 text-[0.7rem] text-foreground outline-none',
-      style: { borderColor: 'var(--ui-stroke-tertiary)' }
+      className: 'cc-area',
+      style: { padding: '5px 7px', fontSize: '.7rem' }
     }
     const wide = item.id === 'purpose'
     return jsxs('div', {
-      className: 'flex flex-col gap-0.5',
+      className: 'cc-field',
       style: wide ? { gridColumn: '1 / -1' } : undefined,
       children: [
-        jsx('label', { className: 'text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: item.label }),
+        jsx('label', { className: 'cc-label', children: item.label }),
         item.type === 'select'
           ? jsx('select', { ...shared, children: (item.options || []).map(option => jsx('option', { value: option, children: option }, option)) })
           : jsx('textarea', { ...shared, rows: wide ? 3 : (item.rows || 1), placeholder: item.placeholder || '' })
@@ -479,55 +640,29 @@ function Questionnaire({ onResult, initial }) {
     }, item.id)
   }
 
-  return jsxs('div', {
-    className: 'mt-3 flex flex-col gap-2',
+  return jsxs('details', {
+    className: 'cc-details',
     children: [
-      jsx('div', {
-        className: 'text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)',
-        children: 'seven answers, no model needed'
-      }),
-      jsx('div', {
-        className: 'grid gap-2',
-        style: { gridTemplateColumns: 'repeat(auto-fit, minmax(13rem, 1fr))' },
-        children: fields.map(field)
-      }),
+      jsx('summary', { children: 'or answer seven questions · no model needed' }),
+      jsx('div', { className: 'cc-grid', style: { marginTop: '8px' }, children: fields.map(field) }),
       jsxs('div', {
-        className: 'flex items-center gap-2',
+        style: { display: 'flex', alignItems: 'center', gap: '9px', marginTop: '9px' },
         children: [
-          jsx('button', {
-            onClick: submit,
-            disabled: !ready || busy,
-            className: 'rounded px-3 py-1 text-[0.7rem] font-medium',
-            style: {
-              background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
-              color: 'var(--ui-text-primary)',
-              whiteSpace: 'nowrap',
-              cursor: ready ? 'pointer' : 'default',
-              opacity: ready ? 1 : 0.5
-            },
-            children: busy ? 'making it…' : 'make it'
-          }),
-          jsx('span', {
-            className: 'text-[0.6rem] text-(--ui-text-quaternary)',
-            children: note || (ready ? '' : 'start with what it should do')
-          })
+          jsx(TileButton, { onClick: submit, disabled: !ready || busy, primary: ready && !busy,
+            children: busy ? 'making it…' : 'make it' }),
+          jsx('span', { className: 'cc-note', children: note || (ready ? '' : 'start with what it should do') })
         ]
       }),
       preview
-        ? jsx('div', {
-            className: 'rounded px-2 py-1 text-[0.62rem]',
-            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-tertiary)' },
-            children: preview
-          })
-        : null,
+        ? jsx('div', { className: 'cc-preview', children: preview })
+        : null
     ]
   })
 }
 
 function CreatorPanel() {
   const [idea, setIdea] = useState('')
-  const [kind, setKind] = useState('skill')
+  const [mode, setMode] = useState('describe')
   const [sourceName, setSourceName] = useState('')
   const [sources, setSources] = useState({ skills: [], cron: [] })
   const [busy, setBusy] = useState(false)
@@ -550,6 +685,8 @@ function CreatorPanel() {
   }, [])
 
   CreatorPanel.__setPrefill = setPrefill
+  CreatorPanel.__setIdea = setIdea
+  const kind = mode === 'cron' ? 'cron' : 'skill'
   const options = kind === 'skill' ? sources.skills : sources.cron
   const canBuild = !busy && (idea.trim().length >= 10 || !!sourceName)
 
@@ -703,94 +840,80 @@ function CreatorPanel() {
       .catch(err => fail(String(err && err.message ? err.message : err)))
   }
 
+  function chip(label, on, onClick) {
+    return jsx('button', {
+      onClick,
+      className: on ? 'cc-chip on' : 'cc-chip',
+      'aria-pressed': on,
+      children: label
+    }, label)
+  }
+
+  const pillRow = jsxs('div', {
+    className: 'cc-pills',
+    children: [
+      chip('describe it', mode === 'describe', () => { setMode('describe'); setSourceName('') }),
+      chip(`a skill (${sources.skills.length})`, mode === 'skill',
+        () => { setMode('skill'); setSourceName('') }),
+      chip(`a cron job (${sources.cron.length})`, mode === 'cron',
+        () => { setMode('cron'); setSourceName('') })
+    ]
+  })
+
   return jsxs('div', {
-    className: 'rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-secondary)' },
     children: [
       jsxs('div', {
-        className: 'flex items-center gap-2',
+        className: 'cc-section',
+        style: { marginTop: '15px' },
         children: [
-          jsx(LazyCat, {}),
-          jsxs('div', {
-            children: [
-              jsxs('div', {
-                className: 'flex items-baseline gap-1.5',
-                children: [
-                  jsx('span', { className: 'text-sm font-medium text-foreground', children: 'Make a plugin' }),
-                  jsx('span', { className: 'text-[0.55rem] text-(--ui-text-quaternary)', children: BUILD })
-                ]
-              }),
-              jsx('div', {
-                className: 'mt-0.5 text-[0.7rem] text-(--ui-text-tertiary)',
-                children: 'Say what you want Hermes to do. Or start from a job you already run.'
-              })
-            ]
-          })
+          jsx('div', { className: 'cc-h2', children: 'Weave one' }),
+          jsx('div', { className: 'cc-hint', children: 'the page is the form, the agent is the craftsman' })
         ]
       }),
-      jsx(Questionnaire, { onResult: setOut, initial: prefill }),
-      jsx('div', { className: 'mt-1 text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: 'or describe it' }),
-      jsx('textarea', {
-        value: idea,
-        onChange: event => setIdea(event.target.value),
-        placeholder: 'Watch GPU prices and tell me when one drops under $600',
-        rows: 3,
-        className: 'mt-3 w-full resize-y rounded border bg-transparent p-2 text-[0.75rem] text-foreground outline-none',
-        style: { borderColor: 'var(--ui-stroke-tertiary)' }
-      }),
+      pillRow,
+      mode === 'describe'
+        ? jsx('textarea', {
+            value: idea,
+            onChange: event => setIdea(event.target.value),
+            placeholder: 'Watch GPU prices and tell me when one drops under $600',
+            rows: 3,
+            className: 'cc-area',
+            style: { marginTop: '9px' }
+          })
+        : jsxs('div', { style: { marginTop: '9px' }, children: [
+            jsx('div', { className: 'cc-label', children: mode === 'cron' ? 'pick a job you already run' : 'pick something the agent already knows how to do' }),
+            jsx('div', {
+              className: 'cc-pills',
+              style: { marginTop: '6px', maxHeight: '8.5rem', overflowY: 'auto' },
+              children: options.length
+                ? options.map(item =>
+                    chip(
+                      kind === 'skill'
+                        ? `${item.name} · ${item.lines} lines`
+                        : `${item.name} · ${item.schedule || 'no schedule'}`,
+                      sourceName === item.name,
+                      () => setSourceName(sourceName === item.name ? '' : item.name)
+                    ))
+                : jsx('span', { className: 'cc-note', children: kind === 'cron' ? 'no cron jobs yet' : 'no skills yet' })
+            })
+          ] }),
       jsxs('div', {
-        className: 'mt-2 flex flex-wrap items-center gap-2',
+        style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px', marginTop: '10px' },
         children: [
-          jsx('span', { className: 'text-[0.68rem] text-(--ui-text-tertiary)', children: 'Or start from' }),
-          jsx('select', {
-            value: kind,
-            onChange: event => { setKind(event.target.value); setSourceName('') },
-            className: 'rounded border bg-transparent px-1.5 py-1 text-[0.68rem] text-(--ui-text-secondary)',
-            style: { borderColor: 'var(--ui-stroke-tertiary)' },
-            children: [
-              jsx('option', { value: 'skill', children: `a skill (${sources.skills.length})` }),
-              jsx('option', { value: 'cron', children: `a cron job (${sources.cron.length})` })
-            ]
-          }),
-          jsx('select', {
-            value: sourceName,
-            onChange: event => setSourceName(event.target.value),
-            className: 'min-w-0 max-w-[22rem] flex-1 rounded border bg-transparent px-1.5 py-1 text-[0.68rem] text-(--ui-text-secondary)',
-            style: { borderColor: 'var(--ui-stroke-tertiary)' },
-            children: [
-              jsx('option', { value: '', children: 'choose one…' }),
-              ...options.map(item =>
-                jsx('option', {
-                  value: item.name,
-                  children: kind === 'skill'
-                    ? `${item.name} · ${item.lines} lines`
-                    : `${item.name} · ${item.schedule || 'no schedule'}`
-                }, `${kind}-${item.name}`))
-            ]
-          }),
-          jsx('button', {
-            onClick: build,
-            disabled: !canBuild,
-            className: 'shrink-0 rounded px-3 py-1 text-[0.7rem] font-medium',
-            style: {
-              background: 'color-mix(in srgb, var(--ui-accent) 20%, transparent)',
-              border: '1px solid color-mix(in srgb, var(--ui-accent) 62%, transparent)',
-              color: 'var(--ui-text-primary)',
-              whiteSpace: 'nowrap',
-              cursor: canBuild ? 'pointer' : 'default',
-              opacity: canBuild ? 1 : 0.5
-            },
-            children: busy ? 'Making it…' : 'Make it'
-          }),
+          jsx(TileButton, { onClick: build, disabled: !canBuild, primary: canBuild,
+            children: busy ? 'making it…' : 'make it' }),
+          sourceName
+            ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
+            : null,
           busy && stage
-            ? jsx('span', { className: 'text-[0.64rem] text-(--ui-text-quaternary)', children: stage })
+            ? jsx('span', { className: 'cc-note', children: stage })
             : null
         ]
       }),
       error
         ? jsxs('div', {
-            className: 'mt-2 flex flex-wrap items-center gap-2 text-[0.68rem]',
-            style: { color: 'var(--ui-text-tertiary)' },
+            className: 'cc-error',
+            style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px' },
             children: [
               jsx('span', { children: error }),
               handoff
@@ -805,7 +928,8 @@ function CreatorPanel() {
             ]
           })
         : null,
-      out ? jsx(Built, { out }) : null
+      out ? jsx(Ledger, { out }) : null,
+      jsx(Questionnaire, { onResult: setOut, initial: prefill })
     ]
   })
 }
@@ -814,38 +938,7 @@ CreatorPanel.__api = null
 CreatorPanel.__onBuilt = null
 CreatorPanel.__seen = []
 CreatorPanel.__setPrefill = null
-
-function Badge({ tone = 'quiet', children }) {
-  const styles = {
-    good: { color: 'var(--ui-accent)', border: '1px solid color-mix(in srgb, var(--ui-accent) 45%, transparent)' },
-    quiet: { color: 'var(--ui-text-quaternary)', border: '1px solid var(--ui-stroke-tertiary)' },
-    warn: { color: 'var(--ui-text-tertiary)', border: '1px solid var(--ui-stroke-secondary)' }
-  }
-  return jsx('span', {
-    className: 'rounded-full px-1.5 py-[1px] text-[0.56rem] uppercase tracking-wide',
-    style: { ...(styles[tone] || styles.quiet), whiteSpace: 'nowrap' },
-    children
-  })
-}
-
-function TileButton({ onClick, disabled, primary, children }) {
-  return jsx('button', {
-    onClick,
-    disabled,
-    className: 'rounded px-2 py-[3px] text-[0.63rem]',
-    style: {
-      whiteSpace: 'nowrap',
-      cursor: disabled ? 'default' : 'pointer',
-      opacity: disabled ? 0.5 : 1,
-      background: primary ? 'color-mix(in srgb, var(--ui-accent) 18%, transparent)' : 'transparent',
-      border: primary
-        ? '1px solid color-mix(in srgb, var(--ui-accent) 55%, transparent)'
-        : '1px solid var(--ui-stroke-secondary)',
-      color: primary ? 'var(--ui-text-primary)' : 'var(--ui-text-secondary)'
-    },
-    children
-  })
-}
+CreatorPanel.__setIdea = null
 
 function ChatEdit({ name, prompt, onSaved }) {
   const [text, setText] = useState('')
@@ -860,13 +953,13 @@ function ChatEdit({ name, prompt, onSaved }) {
       setNote('this surface has no chat — paste the request there instead')
       return
     }
-    const sent = composer.submit(null, 
+    const handed = composer.submit(null,
       `Change the generated plugin "${name}" in ~/.hermes/lazy-plugin/created/${name}/. ` +
       `Request: ${request}. Load the lazy-plugin-builder skill, read the files before editing, ` +
       `keep plugin.yaml and __init__.py in step, then run: hermes plugins validate ` +
       `~/.hermes/lazy-plugin/created/${name}`
     )
-    if (!sent) {
+    if (!handed) {
       setNote('nothing is focused in chat — open a chat and try again')
       return
     }
@@ -877,23 +970,19 @@ function ChatEdit({ name, prompt, onSaved }) {
   }
 
   return jsxs('div', {
-    className: 'mt-1 flex flex-col gap-1.5 rounded p-2',
-    style: { background: 'var(--ui-bg-tertiary)' },
+    style: { marginTop: '6px', paddingTop: '8px', borderTop: `1px solid ${CC.rule}` },
     children: [
-      jsx('div', {
-        className: 'text-[0.58rem] uppercase tracking-wide text-(--ui-text-quaternary)',
-        children: 'ask for a change'
-      }),
+      jsx('div', { className: 'cc-label', children: 'ask for a change' }),
       jsxs('div', {
-        className: 'flex items-end gap-1.5',
+        style: { display: 'flex', alignItems: 'flex-end', gap: '6px', marginTop: '5px' },
         children: [
           jsx('textarea', {
             value: text,
             onChange: event => setText(event.target.value),
             rows: 2,
             placeholder: 'make the price ceiling $700, and say which listing won',
-            className: 'min-w-0 flex-1 resize-y rounded border bg-transparent p-1.5 text-[0.68rem] text-foreground outline-none',
-            style: { borderColor: 'var(--ui-stroke-tertiary)' }
+            className: 'cc-area',
+            style: { flex: 1, minWidth: 0, fontSize: '.68rem', padding: '5px 7px' }
           }),
           jsx(TileButton, {
             onClick: ask,
@@ -904,18 +993,22 @@ function ChatEdit({ name, prompt, onSaved }) {
         ]
       }),
       jsx('div', {
-        className: 'text-[0.58rem] text-(--ui-text-quaternary)',
-        children: note || (sent ? 'sent' : 'plain English — the agent edits the files and re-validates')
+        className: 'cc-note',
+        style: { marginTop: '5px' },
+        children: note || (sent ? 'sent' : 'plain english — the agent edits the files and re-validates')
       })
     ]
   })
 }
 
+// Tile: title + verdict pill on one line, the verdict sentence under it (the fact before the
+// prose), description clamped to two, monospace metadata, actions on hover or focus.
 function PluginTile({ plugin, onChanged }) {
   const [busy, setBusy] = useState('')
   const [note, setNote] = useState('')
   const [editing, setEditing] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const verdict = verdictOf(plugin.smoke)
 
   function install() {
     setBusy('install')
@@ -948,60 +1041,48 @@ function PluginTile({ plugin, onChanged }) {
       .finally(() => setBusy(''))
   }
 
-  return jsxs('div', {
-    className: 'flex flex-col gap-1.5 rounded border p-3',
-    style: { borderColor: 'var(--ui-stroke-secondary)' },
+  function smoke() {
+    setBusy('smoke')
+    setNote('')
+    CreatorPanel.__api
+      .smokeTest(plugin.name)
+      .then(result => {
+        if (result && result.ok) {
+          setNote(result.headline || 'dispatched')
+          if (onChanged) onChanged()
+          return
+        }
+        setNote((result && result.error) || 'smoke test could not run')
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+      .finally(() => setBusy(''))
+  }
+
+  const toolCount = (plugin.tools || []).length
+  const meta = [`${toolCount} tool${toolCount === 1 ? '' : 's'}`, `${plugin.files} files`]
+  if (plugin.version) meta.push(`v${plugin.version}`)
+  if (plugin.validated === false) meta.push('validate failed')
+  if (plugin.installed) meta.push('installed')
+  if (plugin.published) meta.push('on github')
+
+  return jsxs('article', {
+    className: 'cc-tile',
     children: [
       jsxs('div', {
-        className: 'flex items-baseline justify-between gap-2',
+        className: 'cc-tile-head',
         children: [
-          jsxs('div', {
-            className: 'flex items-baseline gap-1.5',
-            children: [
-              jsx('span', { className: 'text-[0.84rem] font-medium text-foreground', children: plugin.title || plugin.name }),
-              plugin.validated === true
-                ? jsx(Badge, { tone: 'quiet', children: 'valid' })
-                : plugin.validated === false
-                  ? jsx(Badge, { tone: 'warn', children: 'needs a fix' })
-                  : jsx(Badge, { tone: 'quiet', children: 'unchecked' }),
-              plugin.smoke && plugin.smoke.verdict === 'works'
-                ? jsx(Badge, { tone: 'good', children: 'runs' })
-                : plugin.smoke && plugin.smoke.verdict === 'needs-key'
-                  ? jsx(Badge, { tone: 'warn', children: 'needs a key' })
-                  : plugin.smoke && plugin.smoke.verdict === 'broken'
-                    ? jsx(Badge, { tone: 'warn', children: 'broken' })
-                    : plugin.smoke
-                      ? jsx(Badge, { tone: 'quiet', children: String(plugin.smoke.verdict || 'unchecked') })
-                      : null
-            ]
-          }),
-          jsx('span', { className: 'font-mono text-[0.56rem] text-(--ui-text-quaternary)', children: plugin.version ? `v${plugin.version}` : '' })
+          jsx('h3', { className: 'cc-tile-title', children: plugin.title || plugin.name }),
+          jsx('span', { className: `cc-pill ${verdict.tone}`, children: verdict.word })
         ]
       }),
+      jsx('div', { className: 'cc-sentence', children: sentenceOf(plugin.smoke) }),
+      jsx('p', { className: 'cc-desc', children: plugin.description || 'no description' }),
       jsx('div', {
-        className: 'text-[0.68rem] leading-[1.35] text-(--ui-text-tertiary)',
-        style: { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
-        children: plugin.description || 'no description'
-      }),
-      plugin.smoke && plugin.smoke.headline
-        ? jsx('div', {
-            className: 'text-[0.62rem] leading-[1.3]',
-            style: { color: plugin.smoke.verdict === 'works' ? 'var(--ui-text-secondary)' : 'var(--ui-text-tertiary)' },
-            children: plugin.smoke.headline
-          })
-        : null,
-      jsxs('div', {
-        className: 'flex flex-wrap items-center gap-1.5 text-[0.6rem] text-(--ui-text-quaternary)',
-        children: [
-          jsx('span', { children: `${(plugin.tools || []).length} tools` }),
-          jsx('span', { children: '·' }),
-          jsx('span', { children: `${plugin.files} files` }),
-          plugin.installed ? jsx(Badge, { tone: 'good', children: 'installed' }) : null,
-          plugin.published ? jsx(Badge, { tone: 'quiet', children: 'on github' }) : null
-        ]
+        className: 'cc-meta',
+        children: meta.map((part, index) => jsx('span', { children: index ? `· ${part}` : part }, index))
       }),
       jsxs('div', {
-        className: 'mt-0.5 flex flex-wrap items-center gap-1.5',
+        className: 'cc-actions',
         children: [
           jsx(TileButton, {
             onClick: install,
@@ -1018,17 +1099,7 @@ function PluginTile({ plugin, onChanged }) {
             children: busy === 'publish' ? 'publishing…' : plugin.published ? 'republish' : 'publish'
           }),
           jsx(TileButton, {
-            onClick: () => {
-              setBusy('smoke')
-              CreatorPanel.__api
-                .smokeTest(plugin.name)
-                .then(result => {
-                  if (result && result.ok && onSmoked) onSmoked(plugin.name, result.headline)
-                  else setNote((result && result.error) || 'smoke test could not run')
-                })
-                .catch(err => setNote(String(err && err.message ? err.message : err)))
-                .finally(() => setBusy(''))
-            },
+            onClick: smoke,
             disabled: !!busy,
             children: busy === 'smoke' ? 'testing…' : 'test it'
           }),
@@ -1054,21 +1125,82 @@ function PluginTile({ plugin, onChanged }) {
           }),
           plugin.published
             ? jsx(ExtLink, { href: plugin.published.repo, children: 'repo ↗' })
-            : null,
-          note
-            ? jsx('span', { className: 'truncate text-[0.58rem] text-(--ui-text-quaternary)', children: note })
             : null
         ]
       }),
+      note
+        ? jsx('div', { className: 'cc-note', children: note })
+        : null,
       editing ? jsx(ChatEdit, { name: plugin.name, onSaved: onChanged }) : null
     ]
   })
 }
 
-function CreatedTiles({ version }) {
-  const [rows, setRows] = useState([])
-  const [tick, setTick] = useState(0)
+function EmptyState() {
+  const example = 'Watch GPU prices and tell me when one drops under $600'
+  return jsxs('div', {
+    className: 'cc-empty',
+    children: [
+      jsx(Cat, { size: 128 }),
+      jsxs('div', {
+        children: [
+          jsx('div', { className: 'cc-empty-line', children: 'Nothing woven yet.' }),
+          jsx('div', {
+            className: 'cc-empty-copy',
+            children: 'Pick a skill or a cron job you already run, or describe the job in one sentence. ' +
+              'Every build lands as files you can read, validates itself, and gets dispatched once before it ships.'
+          }),
+          jsx('button', {
+            className: 'cc-example',
+            title: 'use this example',
+            onClick: () => {
+              if (CreatorPanel.__setIdea) CreatorPanel.__setIdea(example)
+            },
+            children: `try: ${example}`
+          })
+        ]
+      })
+    ]
+  })
+}
+
+function Hero({ rows }) {
+  const ready = rows && rows.length
+  return jsxs('div', {
+    className: 'cc-hero',
+    children: [
+      jsx('div', { className: 'cc-sun' }),
+      ready ? jsx(Cat, { size: 96 }) : null,
+      jsxs('div', {
+        className: 'cc-hero-main',
+        children: [
+          jsx('div', { className: 'cc-word', children: "Cat's Cradle" }),
+          jsx('div', {
+            className: 'cc-thesis',
+            children: 'a plugin is a spec, a validation, and one dispatch that proves it runs'
+          })
+        ]
+      }),
+      jsxs('div', {
+        children: [
+          rows
+            ? jsx('div', {
+                className: 'cc-counts',
+                children: rows.length ? countsLine(rows) : 'nothing woven yet'
+              })
+            : null,
+          jsx('div', { className: 'cc-stamp', children: BUILD })
+        ]
+      })
+    ]
+  })
+}
+
+function LazyPage() {
+  const [version, setVersion] = useState(0)
+  const [rows, setRows] = useState(null)
   const [error, setError] = useState('')
+  CreatorPanel.__onBuilt = () => setVersion(value => value + 1)
 
   useEffect(() => {
     let live = true
@@ -1079,41 +1211,63 @@ function CreatedTiles({ version }) {
         setError('')
         setRows((payload && payload.created) || [])
       })
-      .catch(err => { if (live) setError(String(err && err.message ? err.message : err)) })
+      .catch(err => {
+        if (!live) return
+        setError(String(err && err.message ? err.message : err))
+        setRows([])
+      })
     return () => { live = false }
-  }, [version, tick])
+  }, [version])
 
-  if (error) {
-    return jsx('div', {
-      className: 'rounded border p-3 text-[0.68rem]',
-      style: { borderColor: 'var(--ui-stroke-secondary)', color: 'var(--ui-text-tertiary)' },
-      children: `could not list what you have built: ${error}`
-    })
-  }
-  if (!rows.length) return null
+  const count = (rows || []).length
+  const tools = (rows || []).reduce((total, row) => total + (row.tools || []).length, 0)
+
   return jsxs('div', {
-    className: 'flex flex-col gap-2',
+    className: 'cc-page',
     children: [
+      jsx('style', { children: CC_STYLE }),
       jsx('div', {
-        className: 'text-[0.72rem] font-medium text-foreground',
-        children: `Built so far (${rows.length})`
-      }),
-      jsx('div', {
-        className: 'grid gap-2',
-        style: { gridTemplateColumns: 'repeat(auto-fill, minmax(17rem, 1fr))' },
-        children: rows.map(row =>
-          jsx(PluginTile, { plugin: row, onChanged: () => setTick(value => value + 1) }, row.name))
+        className: 'cc-frame',
+        children: jsxs('div', {
+          className: 'cc-inner',
+          children: [
+            jsx(Hero, { rows }),
+            jsx('div', { className: 'cc-rule' }),
+            jsx('div', { className: 'cc-rule-gap' }),
+            jsx(CreatorPanel, {}),
+            jsx('div', { className: 'cc-rule', style: { marginTop: '18px' } }),
+            jsx('div', { className: 'cc-rule-gap' }),
+            error
+              ? jsx('div', { className: 'cc-error', children: `could not list what you have built: ${error}` })
+              : null,
+            jsxs('div', {
+              className: 'cc-section',
+              children: [
+                jsx('div', { className: 'cc-h2', children: 'Built so far' }),
+                jsx('div', {
+                  className: 'cc-hint',
+                  children: rows === null
+                    ? 'reading the shelf…'
+                    : `${count} plugin${count === 1 ? '' : 's'} · ${tools} tool${tools === 1 ? '' : 's'}`
+                })
+              ]
+            }),
+            rows === null
+              ? null
+              : count
+                ? jsx('div', {
+                    className: 'cc-tiles',
+                    children: rows.map(row =>
+                      jsx(PluginTile, {
+                        plugin: row,
+                        onChanged: () => setVersion(value => value + 1)
+                      }, row.name))
+                  })
+                : jsx(EmptyState, {})
+          ]
+        })
       })
     ]
-  })
-}
-
-function LazyPage() {
-  const [version, setVersion] = useState(0)
-  CreatorPanel.__onBuilt = () => setVersion(value => value + 1)
-  return jsxs('div', {
-    className: 'flex flex-col gap-4 p-5',
-    children: [jsx(CreatorPanel, {}), jsx(CreatedTiles, { version })]
   })
 }
 
@@ -1129,9 +1283,9 @@ function LazyChip() {
   }, [])
   return jsx('button', {
     className: 'inline-flex h-full items-center px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) hover:text-foreground',
-    title: 'Lazy Cat — make a plugin from a description or a job you already run',
+    title: "Cat's Cradle — make a plugin from a description or a job you already run",
     onClick: () => host.navigate(ROUTE),
-    children: count == null ? 'Lazy' : `${count} built`
+    children: count == null ? 'Cat’s Cradle' : `Cat’s Cradle · ${count}`
   })
 }
 

@@ -53,8 +53,9 @@ terminator if one is needed.
   right-aligned in monospace (`3 run · 1 needs a key`).
 - Build: source pills (a skill / a cron job / describe it), one primary action. No dropdown where a
   pill row fits.
-- Tiles: 2-up grid. Title + verdict pill on one line, description clamped to two, then the verdict
-  sentence, then monospace metadata, then actions (visible on hover, always visible on focus).
+- Tiles: 2-up grid. Title + verdict pill on one line, the verdict sentence directly under it,
+  description clamped to two, then monospace metadata, then actions (visible on hover, always
+  visible on focus).
 - Result card: a ledger — `spec · files · validate · dispatch` — each row monospace with a tick or
   the exact failing line. Never a green "all good" badge without the line beneath it.
 
