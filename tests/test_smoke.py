@@ -63,10 +63,10 @@ def make_http_bundle(tmp_path, base):
     body = f"""
 import json, urllib.request
 
-def handle_do_it(params, config):
+def handle_do_it(params, **kwargs):
     with urllib.request.urlopen({base!r} + "/search?q=cat", timeout=5) as response:
         payload = json.loads(response.read())
-    return {{"ok": True, "count": len(payload["results"]), "items": payload["results"]}}
+    return json.dumps({{"ok": True, "count": len(payload["results"]), "items": payload["results"]}})
 
 PARAMS = {{"do_it": {{"query": "what to search for"}}}}
 
@@ -96,7 +96,7 @@ def test_a_working_tool_is_graded_works(smoke_mod, tmp_path, loopback):
 def test_a_missing_key_is_reported_without_calling(smoke_mod, tmp_path, monkeypatch):
     monkeypatch.delenv("FIXTURE_TOKEN", raising=False)
     body = """
-def handle_do_it(params, config):
+def handle_do_it(params, **kwargs):
     raise AssertionError("the smoke test must not call a tool whose key is missing")
 
 def register(ctx):
@@ -110,7 +110,7 @@ def register(ctx):
 
 def test_a_stub_body_is_broken_not_valid(smoke_mod, tmp_path):
     body = """
-def handle_do_it(params, config):
+def handle_do_it(params, **kwargs):
     raise NotImplementedError("This tool is a scaffold. Developer must write a parser")
 
 def register(ctx):
@@ -124,7 +124,7 @@ def register(ctx):
 
 def test_a_crash_is_broken_and_names_the_error(smoke_mod, tmp_path):
     body = """
-def handle_do_it(params, config):
+def handle_do_it(params, **kwargs):
     return {}["missing"]
 
 def register(ctx):

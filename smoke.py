@@ -23,6 +23,7 @@ import importlib.util
 import inspect
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -112,6 +113,57 @@ def _read_manifest(bundle: Path) -> dict:
     return manifest
 
 
+def contract_violations(bundle: Path) -> list[str]:
+    """The developer guide's handler contract, checked before anything is allowed to ship.
+
+    `registry.dispatch` calls `handler(args, **kwargs)` and filters kwargs to the signature, so a
+    required `config` parameter is never filled; `_normalize_handler_result` accepts only a str. A
+    generator that emits either shape produces a plugin that validates and cannot run.
+    """
+    problems: list[str] = []
+    try:
+        module = _load(bundle)
+    except Exception as exc:
+        return [f"cannot import __init__.py: {type(exc).__name__}: {exc}"]
+    ctx = _FakeCtx()
+    register = getattr(module, "register", None)
+    if not callable(register):
+        return ["no register(ctx) function"]
+    try:
+        register(ctx)
+    except Exception as exc:
+        return [f"register(ctx) raised: {type(exc).__name__}: {exc}"]
+    if not ctx.tools:
+        return ["register(ctx) registered no tools"]
+    for name, entry in ctx.tools.items():
+        handler = entry.get("handler")
+        if not callable(handler):
+            problems.append(f"{name}: no handler callable")
+            continue
+        try:
+            signature = inspect.signature(handler)
+        except (TypeError, ValueError):
+            continue
+        required = [p for p in signature.parameters.values()
+                    if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)
+                    and p.default is p.empty]
+        if len(required) != 1:
+            problems.append(f"{name}: handler takes {len(required)} required positional "
+                            "parameters; the contract is one (params)")
+        if any(p.name == "config" for p in signature.parameters.values()):
+            problems.append(f"{name}: a `config` parameter is never filled by the registry")
+        if not any(p.kind == p.VAR_KEYWORD for p in signature.parameters.values()):
+            problems.append(f"{name}: handler should accept **kwargs")
+        source = ""
+        try:
+            source = inspect.getsource(handler)
+        except (OSError, TypeError):
+            pass
+        if source and "json.dumps" not in source and "NotImplementedError" not in source:
+            problems.append(f"{name}: handler must return json.dumps(...), not a dict")
+    return problems
+
+
 def _classify(result: Any) -> tuple[str, str]:
     if not isinstance(result, dict):
         return "broken", f"returned {type(result).__name__}, not a result object"
@@ -144,25 +196,94 @@ def _is_stub(handler: Any) -> bool:
     return len(body) <= 3 and "NotImplementedError" in source
 
 
-def _call(handler: Any, params: dict, config: dict, timeout: float) -> tuple[Any, str]:
-    """Call a handler with a wall-clock limit; a hung handler is a broken handler."""
-    box: dict[str, Any] = {}
+# The real contract, from the developer guide: discover the plugin, then dispatch through the tool
+# registry the model itself calls. `registry.dispatch` fills only the kwargs the signature accepts
+# and `_normalize_handler_result` accepts only a str — a direct `handler(params, config)` call hides
+# both defects, which is how two structurally wrong plugins shipped looking valid.
+DISPATCH = """
+import json, sys
+from hermes_cli.plugins import discover_plugins
+discover_plugins(force=True)
+from tools.registry import registry
+raw = registry.dispatch(sys.argv[1], json.loads(sys.argv[2]))
+print("<<<SMOKE>>>" + json.dumps({"type": type(raw).__name__,
+                                 "raw": raw if isinstance(raw, str) else repr(raw)}))
+"""
 
-    def run() -> None:
+
+def _interpreter() -> str:
+    """The interpreter that has Hermes' own dependencies — not necessarily the one running this."""
+    explicit = os.environ.get("HERMES_PYTHON")
+    if explicit and Path(explicit).exists():
+        return explicit
+    home = Path.home() / ".hermes"
+    # Newest first: the PM-managed env the gateway actually runs in, then the downloaded tools.
+    candidates = [str(p) for p in sorted(home.glob("installs/*/environments/*/venv/bin/python3"),
+                                         key=lambda p: p.stat().st_mtime, reverse=True)]
+    candidates += [str(p) for p in sorted(home.glob("tools/python-*/bin/python3"), reverse=True)]
+    candidates.append(sys.executable)
+    for candidate in candidates:
         try:
-            box["result"] = handler(params, config)
-        except NotImplementedError as exc:
-            box["result"] = {"ok": False, "error": f"scaffold: {exc}"}
-        except Exception as exc:  # the caller needs the message, not a traceback
-            box["result"] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+            ok = subprocess.run([candidate, "-c", "import ruamel.yaml"], capture_output=True,
+                                timeout=20).returncode == 0
+        except Exception:
+            ok = False
+        if ok:
+            return candidate
+    return sys.executable
 
-    thread = threading.Thread(target=run, daemon=True)
-    started = time.time()
-    thread.start()
-    thread.join(timeout)
-    if thread.is_alive():
-        return {"ok": False, "error": f"timed out after {timeout:.0f}s"}, "timeout"
-    return box.get("result"), f"{time.time() - started:.1f}s"
+
+def _agent_home() -> Path:
+    explicit = os.environ.get("HERMES_AGENT_HOME")
+    if explicit and Path(explicit).is_dir():
+        return Path(explicit)
+    return Path.home() / ".hermes" / "hermes-agent"
+
+
+def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
+    """Dispatch one tool in a throwaway HERMES_HOME, so nothing installed elsewhere can answer."""
+    agent = _agent_home()
+    with tempfile.TemporaryDirectory() as home:
+        plugins = Path(home) / "plugins"
+        plugins.mkdir(parents=True, exist_ok=True)
+        link = plugins / bundle.name
+        try:
+            link.symlink_to(bundle.resolve(), target_is_directory=True)
+        except OSError as exc:
+            return {"status": "broken", "detail": f"cannot stage the bundle: {exc}"}
+        # Discovery only loads what plugins.enabled allows; a fresh home enables nothing.
+        (Path(home) / "config.yaml").write_text(
+            "plugins:\n  enabled:\n    - " + bundle.name + "\n", encoding="utf-8")
+        env = {**os.environ, "HERMES_HOME": home, "PYTHONUNBUFFERED": "1",
+               "PYTHONPATH": str(agent)}
+        try:
+            proc = subprocess.run([_interpreter(), "-c", DISPATCH, tool, json.dumps(params)],
+                                  capture_output=True, text=True, timeout=timeout,
+                                  env=env, cwd=str(agent))
+        except subprocess.TimeoutExpired:
+            return {"status": "broken", "detail": f"dispatch timed out after {timeout:.0f}s"}
+    marker = [line for line in (proc.stdout or "").splitlines() if line.startswith("<<<SMOKE>>>")]
+    if not marker:
+        tail = " ".join((proc.stderr or proc.stdout or "").strip().splitlines()[-3:])
+        # A missing host dependency is not the plugin's fault; say so instead of calling it broken.
+        if "ModuleNotFoundError" in tail or "No module named" in tail:
+            return {"status": "unchecked",
+                    "detail": f"the smoke host is missing a dependency: {tail[:200]}"}
+        return {"status": "broken", "detail": f"dispatch did not run: {tail[:300] or 'no output'}"}
+    try:
+        payload = json.loads(marker[-1][len("<<<SMOKE>>>"):])
+    except ValueError:
+        return {"status": "broken", "detail": "dispatch produced unreadable output"}
+    if payload.get("type") != "str":
+        return {"status": "broken",
+                "detail": f"handler returned {payload.get('type')}, not a JSON string — "
+                          "the runtime refuses that result type"}
+    try:
+        result = json.loads(payload.get("raw") or "{}")
+    except ValueError:
+        return {"status": "broken", "detail": "handler returned a string that is not JSON"}
+    status, detail = _classify(result)
+    return {"status": status, "detail": detail, "result": result}
 
 
 def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
@@ -227,13 +348,10 @@ def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
             continue
         params = sample_params(params_hint.get(name) or
                                (schema.get("parameters") or {}).get("properties"))
-        with tempfile.TemporaryDirectory() as tmp:
-            call_config = dict(config or {})
-            call_config.setdefault("path", str(Path(tmp) / "smoke.txt"))
-            call_config.setdefault("content", "smoke")
-            result, elapsed = _call(handler, params, call_config, timeout)
-        status, detail = _classify(result)
-        row.update({"status": status, "detail": detail, "seconds": elapsed, "params": params})
+        started_call = time.time()
+        dispatched = _dispatch(bundle, name, params, timeout)
+        row.update({"status": dispatched["status"], "detail": dispatched["detail"],
+                    "seconds": f"{time.time() - started_call:.1f}s", "params": params})
         report["tools"].append(row)
 
     statuses = [row["status"] for row in report["tools"]]

@@ -1,6 +1,7 @@
 """A generated plugin must load, register its tools, and refuse to be nonsense."""
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -127,10 +128,10 @@ def test_handlers_return_errors_instead_of_raising(creator, tmp_path):
     spec.loader.exec_module(module)
 
     # The template now holds a real URL, so an unset parameter is a network answer, not a raise.
-    http_result = module.handle_check_prices({}, {})
+    http_result = json.loads(module.handle_check_prices({}))
     assert http_result["ok"] is False and http_result.get("error")
-    file_result = module.handle_last_run({}, {})
-    assert file_result["ok"] is False and "config.path" in file_result["error"]
+    file_result = json.loads(module.handle_last_run({}))
+    assert file_result["ok"] is False and "no path is configured" in file_result["error"]
 
 
 def test_file_handler_reads_a_real_path(creator, tmp_path):
@@ -148,7 +149,7 @@ def test_file_handler_reads_a_real_path(creator, tmp_path):
 
     target_file = tmp_path / "note.txt"
     target_file.write_text("hello", encoding="utf-8")
-    result = module.handle_read_it({}, {"path": str(target_file)})
+    result = json.loads(module.handle_read_it({"path": str(target_file)}))
     assert result["ok"] is True and result["text"] == "hello"
 
 

@@ -94,7 +94,7 @@ def _build(creator, tmp_path, base, name="loopback-gifs"):
 def test_query_params_env_key_and_projection(creator, tmp_path, loopback, monkeypatch):
     monkeypatch.setenv("LOOPBACK_TOKEN", "secret-value")
     module = _build(creator, tmp_path, loopback)
-    out = module.HANDLERS["search_gifs"]({"query": "cats", "limit": 2}, {})
+    out = json.loads(module.HANDLERS["search_gifs"]({"query": "cats", "limit": 2}))
     assert out["ok"] is True, out
     assert out["count"] == 2
     assert out["items"][0]["title"] == "cat one"
@@ -108,7 +108,7 @@ def test_query_params_env_key_and_projection(creator, tmp_path, loopback, monkey
 def test_a_missing_key_is_named_not_401(creator, tmp_path, loopback, monkeypatch):
     monkeypatch.delenv("LOOPBACK_TOKEN", raising=False)
     module = _build(creator, tmp_path, loopback, name="loopback-missing-key")
-    out = module.HANDLERS["search_gifs"]({}, {})
+    out = json.loads(module.HANDLERS["search_gifs"]({}))
     assert out["ok"] is False
     assert "LOOPBACK_TOKEN is not set" in out["error"]
 

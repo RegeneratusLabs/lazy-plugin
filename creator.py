@@ -164,7 +164,7 @@ provides_tools:{tools}
 
 HANDLER = '''
 
-def {func}(params: dict, config: dict) -> dict:
+def {func}(params: dict, **kwargs: Any) -> str:
     """{description}
 
     {behaviour}
@@ -173,15 +173,15 @@ def {func}(params: dict, config: dict) -> dict:
 '''
 
 BODIES = {
-    "command": '''    argv = list(config.get("argv") or [])
+    "command": '''    argv = list({argv!r})
     if not argv:
-        return {{"ok": False, "error": "config.argv is not set for {tool}"}}
+        return json.dumps({{"ok": False, "error": "no command is configured for {tool}"}})
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
-        return {{"ok": proc.returncode == 0, "code": proc.returncode,
-                "stdout": proc.stdout[-4000:], "stderr": proc.stderr[-2000:]}}
+        return json.dumps({{"ok": proc.returncode == 0, "code": proc.returncode,
+                           "stdout": proc.stdout[-4000:], "stderr": proc.stderr[-2000:]}})
     except Exception as exc:
-        return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}}''',
+        return json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}})''',
     "http": '''    base = {url!r}
     mapping = {query!r}
     defaults = {defaults!r}
@@ -190,6 +190,8 @@ BODIES = {
     fields = {fields!r}
     method = {method!r}
 
+    if not base:
+        return json.dumps({{"ok": False, "error": "no request url is configured for {tool}"}})
     try:
         limit = int(params.get(limit_param or "limit") or defaults.get(limit_param or "limit") or 10)
     except (TypeError, ValueError):
@@ -206,30 +208,29 @@ BODIES = {
         if value in (None, ""):
             continue
         try:
-            query[key] = _token(value, config)
+            query[key] = _token(value)
         except ValueError as exc:
-            return {{"ok": False, "error": str(exc)}}
+            return json.dumps({{"ok": False, "error": str(exc)}})
 
     url = base + ("&" if "?" in base else "?") + urllib.parse.urlencode(query) if query else base
     headers = {{"Accept": "application/json",
                "User-Agent": "hermes-plugin/1.0 (+https://hermes-agent.nousresearch.com)"}}
     for key, token in {headers!r}.items():
         try:
-            headers[key] = _token(token, config)
+            headers[key] = _token(token)
         except ValueError as exc:
-            return {{"ok": False, "error": str(exc)}}
-    headers.update({{k: v for k, v in (config.get("headers") or {{}}).items()}})
+            return json.dumps({{"ok": False, "error": str(exc)}})
     try:
         request = urllib.request.Request(url, headers=headers, method=method)
         with urllib.request.urlopen(request, timeout=30) as response:
             raw = response.read()[:400000].decode("utf-8", "replace")
     except Exception as exc:
-        return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}", "url": url}}
+        return json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}", "url": url}})
 
     try:
         payload = json.loads(raw)
     except ValueError:
-        return {{"ok": True, "url": url, "text": raw[:4000]}}
+        return json.dumps({{"ok": True, "url": url, "text": raw[:4000]}})
 
     items = payload
     for part in [p for p in items_path.split(".") if p]:
@@ -241,23 +242,23 @@ BODIES = {
         items = [{{label: _dig(row, path) for label, path in fields.items()}} for row in items[:limit]]
     elif isinstance(items, list):
         items = items[:limit]
-    return {{"ok": True, "url": url, "count": len(items) if isinstance(items, list) else 1,
-            "items": items}}''',
-    "file": '''    path = config.get("path") or {path_default!r}
+    return json.dumps({{"ok": True, "url": url,
+                       "count": len(items) if isinstance(items, list) else 1,
+                       "items": items}}, ensure_ascii=False)''',
+    "file": '''    path = params.get("path") or {path_default!r}
     if not path:
-        return {{"ok": False, "error": "config.path is not set for {tool}"}}
+        return json.dumps({{"ok": False, "error": "no path is configured for {tool}"}})
     target = Path(os.path.expanduser(str(path)))
-    write = bool(config.get("write"))
     try:
-        if write:
+        if params.get("write"):
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(str(params.get("content") or config.get("content") or ""),
-                              encoding="utf-8")
-            return {{"ok": True, "path": str(target), "bytes": target.stat().st_size}}
-        return {{"ok": True, "path": str(target),
-                 "text": target.read_text(encoding="utf-8", errors="replace")[:20000]}}
+            target.write_text(str(params.get("content") or ""), encoding="utf-8")
+            return json.dumps({{"ok": True, "path": str(target), "bytes": target.stat().st_size}})
+        return json.dumps({{"ok": True, "path": str(target),
+                           "text": target.read_text(encoding="utf-8", errors="replace")[:20000]}},
+                          ensure_ascii=False)
     except Exception as exc:
-        return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}}''',
+        return json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}})''',
     "stub": '''    raise NotImplementedError(
         "This tool is a scaffold. {behaviour_short}"
     )''',
@@ -297,6 +298,7 @@ def render(spec: dict) -> dict:
         imports.append("import re")
         imports.append("import urllib.parse")
         imports.append("import urllib.request")
+    imports.append("from typing import Any")
 
     handlers, entries = [], []
     for tool in tools:
@@ -308,7 +310,8 @@ def render(spec: dict) -> dict:
             behaviour=tool["behaviour"] or "Scaffold: replace with the real implementation.",
             behaviour_short=(tool["behaviour"] or "Replace with the real implementation.")[:200],
             url_default=("" if kind != "http" else ""),
-            path_default=("" if kind != "file" else ""),
+            path_default=(tool.get("target") or ""),
+            argv=[p for p in str(tool.get("target") or "").split()][:8],
             url=request.get("url", ""),
             query=request.get("query") or {},
             defaults=request.get("defaults") or {},
@@ -338,11 +341,11 @@ def render(spec: dict) -> dict:
         "    return obj",
         "",
         "",
-        "def _token(value, config):",
+        "def _token(value):",
         "    # Replace $env:NAME anywhere in a value; a missing variable is a named error, not a 401.",
         "    def sub(match):",
         "        name = match.group(1)",
-        "        found = os.environ.get(name) or config.get(name)",
+        "        found = os.environ.get(name)",
         "        if not found:",
         "            raise ValueError(name + \" is not set — put it in ~/.hermes/.env\")",
         "        return str(found)",
@@ -806,6 +809,16 @@ def create(spec: dict, outbox: Optional[Path] = None) -> dict:
         path.write_text(content, encoding="utf-8")
 
     check = validate_plugin(target)
+
+    # The official handler contract is a gate, not advice: one positional (params), **kwargs, a JSON
+    # string back. A bundle that misses it is deleted rather than left on the shelf looking fine.
+    violations = _smoke_mod().contract_violations(target)
+    if violations:
+        import shutil as _shutil
+        _shutil.rmtree(target, ignore_errors=True)
+        return {"ok": False, "stage": "contract", "problems": violations,
+                "error": "the generated code does not meet the Hermes plugin contract: "
+                         + "; ".join(violations[:3])}
 
     # Structure is not behaviour: load it and call every tool once. A build that cannot run is
     # reported as such now, not discovered later by whoever installs it.
