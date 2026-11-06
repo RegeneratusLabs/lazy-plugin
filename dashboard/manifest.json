@@ -2,7 +2,7 @@
   "name": "lazy-plugin",
   "label": "Cat's Cradle",
   "icon": "Wand2",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "tab": {
     "path": "/lazy-plugin",
     "position": "after:skills"
