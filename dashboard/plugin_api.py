@@ -172,8 +172,20 @@ async def smoke_created(payload: dict | None = None):
         module.write_report(bundle, report)
         return report
 
-    report = await asyncio.to_thread(run)
-    return {"ok": True, "smoke": report, "headline": _smoke_mod().headline(report)}
+    try:
+        report = await asyncio.to_thread(run)
+    except Exception as exc:
+        # The button must always answer with a sentence, never a bare 500: a smoke test that
+        # cannot run is itself a verdict the tile has to show.
+        return {"ok": False, "name": name,
+                "error": f"the smoke test crashed: {type(exc).__name__}: {exc}"[:400]}
+
+    headline = _smoke_mod().headline(report)
+    failing = next(
+        (f"{tool.get('tool')}: {tool.get('detail')}" for tool in report.get("tools") or []
+         if tool.get("status") in ("broken", "scaffold")), "")
+    return {"ok": True, "smoke": report, "headline": headline,
+            "verdict": report.get("verdict"), "first_failure": failing}
 
 
 @router.get("/created")
@@ -290,7 +302,7 @@ async def create_from_answers(payload: dict | None = None):
 
 
 def _queue_mod():
-    spec = importlib.util.spec_from_file_location("lazyplugin_queue_api", _PLUGIN_DIR / "queue.py")
+    spec = importlib.util.spec_from_file_location("lazyplugin_queue_api", _PLUGIN_DIR / "build_queue.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # type: ignore[union-attr]
     return mod

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-3'
+const BUILD = 'cradle-4'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -689,6 +689,23 @@ function CreatorPanel() {
   const [error, setError] = useState('')
   const [prefill, setPrefill] = useState(null)
   const [handoff, setHandoff] = useState('')
+  const [elapsed, setElapsed] = useState(0)
+  const [latch, setLatch] = useState(CreatorPanel.__building)
+
+  // A build outlives the click and the page: it is a thread on the backend. Without a module-level
+  // latch a reload (or a second click) starts a second identical build, which is how two plugins
+  // for one idea get made.
+  useEffect(() => {
+    if (!busy) {
+      CreatorPanel.__building = null
+      setLatch(null)
+      setElapsed(0)
+      return
+    }
+    const started = Date.now()
+    const tick = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000)
+    return () => clearInterval(tick)
+  }, [busy])
 
   useEffect(() => {
     let live = true
@@ -826,6 +843,12 @@ function CreatorPanel() {
   }
 
   function build() {
+    if (CreatorPanel.__building) {
+      fail('a build is already running — it lands in Built so far when it finishes')
+      return
+    }
+    CreatorPanel.__building = { at: Date.now(), idea: idea.trim() }
+    setLatch(CreatorPanel.__building)
     setBusy(true)
     setOut(null)
     setError('')
@@ -924,7 +947,16 @@ function CreatorPanel() {
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
           busy && stage
-            ? jsx('span', { className: 'cc-note', children: stage })
+            ? jsx('span', {
+                className: 'cc-note',
+                children: `${stage}${elapsed ? ` · ${elapsed}s` : ''}`
+              })
+            : null,
+          latch && !busy
+            ? jsx('span', {
+                className: 'cc-note',
+                children: 'a build from this page is still running — it lands in Built so far'
+              })
             : null
         ]
       }),
@@ -957,6 +989,7 @@ CreatorPanel.__onBuilt = null
 CreatorPanel.__seen = []
 CreatorPanel.__setPrefill = null
 CreatorPanel.__setIdea = null
+CreatorPanel.__building = null
 
 function ChatEdit({ name, prompt, onSaved }) {
   const [text, setText] = useState('')
@@ -1066,7 +1099,8 @@ function PluginTile({ plugin, onChanged }) {
       .smokeTest(plugin.name)
       .then(result => {
         if (result && result.ok) {
-          setNote(result.headline || 'dispatched')
+          setNote((result.headline || 'dispatched') +
+            (result.first_failure ? ` · ${result.first_failure}` : ''))
           if (onChanged) onChanged()
           return
         }

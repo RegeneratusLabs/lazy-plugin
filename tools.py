@@ -216,7 +216,7 @@ def handle_built(params: Optional[dict] = None, **kwargs: Any) -> str:
 def handle_pending(params: Optional[dict] = None, **kwargs: Any) -> str:
     """The page writes requests here; this is how the agent finds them."""
     try:
-        queue = _load_sibling("queue", "queue.py")
+        queue = _load_sibling("build_queue", "build_queue.py")
         rows = queue.pending(core.hermes_home())
         return json.dumps({"ok": True, "requests": rows, "prompt": queue.as_prompt(rows),
                            "none": "no requests queued" if not rows else ""})

@@ -2,7 +2,7 @@
   "name": "lazy-plugin",
   "label": "Lazy Plugin",
   "icon": "Wand2",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "tab": {
     "path": "/lazy-plugin",
     "position": "after:skills"

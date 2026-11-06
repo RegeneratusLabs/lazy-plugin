@@ -126,6 +126,18 @@ def validate_spec(spec: dict) -> tuple[Optional[dict], list]:
             continue
         if kind == "http" and not clean_request["items_path"] and not clean_request["fields"]:
             pass  # a whole-document read is legitimate; no projection is not an error
+        # A command with no argv, or a file tool with no path, renders a handler that can only ever
+        # answer "nothing is configured" — it validates, registers, and cannot work. Refuse the
+        # spec here, where the model can still be asked for the target, instead of shipping it.
+        target = _clean(raw.get("target") or "", 300)
+        if kind == "command" and not target:
+            problems.append(f"{tool_name}: a command tool needs target — the argv to run "
+                            "(e.g. \"ffprobe -v error\")")
+            continue
+        if kind == "file" and not target and "path" not in clean_params:
+            problems.append(f"{tool_name}: a file tool needs target, or a declared `path` parameter "
+                            "the caller can fill — otherwise it can only answer \"no path is configured\"")
+            continue
         tools.append({
             "name": tool_name,
             "description": _clean(raw.get("description"), 200) or tool_name,
@@ -823,10 +835,29 @@ def create(spec: dict, outbox: Optional[Path] = None) -> dict:
     # Structure is not behaviour: load it and call every tool once. A build that cannot run is
     # reported as such now, not discovered later by whoever installs it.
     report = smoke_plugin(target)
+    # Seed the page's validation cache with what this build already proved, so the first tile
+    # fetch doesn't pay the validator subprocess (~2.6 s) all over again.
+    _remember_validation(target, check)
     return {"ok": True, "stage": "checked", "name": clean["name"], "dir": str(target),
             "files": sorted(files), "spec": clean, "validation": check,
             "smoke": report, "works": report.get("verdict") == "works",
             "headline": _smoke_headline(report)}
+
+
+def _remember_validation(target: Path, check: dict) -> None:
+    """Write the same {name: {mtime, ok, tail}} row dashboard.plugin_api._created caches, so a
+    bundle this process just validated is not validated again by the page's next fetch."""
+    try:
+        path = _CORE.state_dir() / "validation.json"
+        data = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        modified = max((item.stat().st_mtime for item in target.rglob("*") if item.is_file()),
+                       default=0)
+        data[target.name] = {"mtime": modified, "ok": bool(check.get("ok")),
+                             "tail": [line for line in (check.get("tail") or []) if line.strip()][-3:]}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except Exception:
+        pass
 
 
 def _smoke_mod():

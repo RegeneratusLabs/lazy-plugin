@@ -19,7 +19,8 @@ GOOD = {
          "kind": "http", "params": {"max_price": "integer price ceiling"},
          "target": "https://api.example.com/prices", "behaviour": "GET the prices endpoint."},
         {"name": "last_run", "description": "Read the last stored result.", "kind": "file",
-         "params": {}, "behaviour": "Read config.path."},
+         "params": {}, "target": "~/.hermes/lazy-plugin/last-run.json",
+         "behaviour": "Read the stored result file."},
     ],
     "hooks": ["on_session_end"],
 }
@@ -44,6 +45,16 @@ def test_spec_is_cleaned_and_carries_every_tool(creator):
     assert clean["name"] == "gpu-price-watch"
     assert [t["name"] for t in clean["tools"]] == ["check_prices", "last_run"]
     assert clean["hooks"] == ["on_session_end"]
+
+
+@pytest.mark.parametrize("kind,needle", [("command", "target"), ("file", "target")])
+def test_a_tool_with_no_target_is_refused_not_shipped_broken(creator, kind, needle):
+    """A command with no argv / a file tool with no path validates but can never work."""
+    spec = dict(GOOD, tools=[{"name": "do_thing", "description": "Act.", "kind": kind,
+                              "params": {}, "behaviour": "Do the thing."}])
+    clean, problems = creator.validate_spec(spec)
+    assert clean is None
+    assert any(needle in problem for problem in problems)
 
 
 @pytest.mark.parametrize("bad,reason", [
@@ -136,7 +147,8 @@ def test_handlers_return_errors_instead_of_raising(creator, tmp_path):
 
 def test_file_handler_reads_a_real_path(creator, tmp_path):
     clean, _ = creator.validate_spec({**GOOD, "hooks": [], "tools": [
-        {"name": "read_it", "description": "Read a file.", "kind": "file"}]})
+        {"name": "read_it", "description": "Read a file.", "kind": "file",
+         "params": {"path": "file to read"}}]})
     files = creator.render(clean)
     target = tmp_path / "gen3"
     for rel, body in files.items():

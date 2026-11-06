@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 @pytest.fixture()
 def queue():
-    spec = importlib.util.spec_from_file_location("queue_mod", ROOT / "queue.py")
+    spec = importlib.util.spec_from_file_location("queue_mod", ROOT / "build_queue.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod

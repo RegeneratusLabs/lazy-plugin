@@ -25,14 +25,18 @@ def statedb(monkeypatch, tmp_path):
     conn = sqlite3.connect(db)
     conn.execute("""CREATE TABLE messages (id INTEGER PRIMARY KEY, session_id TEXT, role TEXT,
                     content TEXT, tool_name TEXT, timestamp REAL)""")
-    now = datetime.datetime.now().timestamp()
+    # Noon, not "an hour ago": at 00:30 local an hour ago is yesterday, and this test would fail
+    # once a day for reasons that have nothing to do with the code under test.
+    midday = datetime.datetime.now().replace(hour=12, minute=0, second=0, microsecond=0)
+    today = midday.timestamp()
+    yesterday = (midday - datetime.timedelta(days=1)).timestamp()
     rows = [
-        ("s1", "tool", '{"output": "bash: magick: command not found"}', "terminal", now - 3600),
-        ("s1", "tool", "ModuleNotFoundError: No module named 'weasyprint'", "terminal", now - 7200),
-        ("s2", "tool", "ModuleNotFoundError: No module named 'weasyprint'", "terminal", now - 86400),
-        ("s2", "tool", '{"error": "path required"}', "patch", now - 900),
-        ("s3", "tool", '{"output": "No module named \'tools\'"}', "terminal", now - 800),
-        ("s3", "assistant", "hello", None, now),
+        ("s1", "tool", '{"output": "bash: magick: command not found"}', "terminal", today),
+        ("s1", "tool", "ModuleNotFoundError: No module named 'weasyprint'", "terminal", today - 60),
+        ("s2", "tool", "ModuleNotFoundError: No module named 'weasyprint'", "terminal", yesterday),
+        ("s2", "tool", '{"error": "path required"}', "patch", today - 900),
+        ("s3", "tool", '{"output": "No module named \'tools\'"}', "terminal", today - 800),
+        ("s3", "assistant", "hello", None, today),
     ]
     conn.executemany("INSERT INTO messages (session_id, role, content, tool_name, timestamp) "
                      "VALUES (?,?,?,?,?)", rows)
