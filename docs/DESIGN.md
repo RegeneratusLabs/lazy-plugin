@@ -1,4 +1,6 @@
-# Cat's Cradle — design language
+# Lazy Plugin — design language
+
+Product name: **Lazy Plugin**. The cat below is the mascot, not the name.
 
 Taken from the reference plate: an engraved tabby asleep on a cushion, under a sunburst, inside a
 filigree border, printed in a single aubergine ink on pale ground. Everything below is derived from

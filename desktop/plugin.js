@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-2'
+const BUILD = 'cradle-3'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -188,9 +188,11 @@ function countsLine(rows) {
 
 function makeApi(ctx) {
   const base = `/api/plugins/${ID}`
-  const rest = async (path, options) => {
-    if (ctx && ctx.rest) return ctx.rest(path, options)
-    const request = options || {}
+  // Every failure names the route and method it tried: a 404 on this page is nearly always a
+  // mount question, and "HTTP 404" alone can't tell you which namespace answered.
+  const label = (path, request) => `${(request && request.method) || 'GET'} ${base}${path}`
+
+  const viaFetch = async (path, request) => {
     const response = await fetch(base + path, {
       headers: { 'content-type': 'application/json' },
       ...request,
@@ -198,8 +200,24 @@ function makeApi(ctx) {
         ? JSON.stringify(request.body)
         : request.body
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status}`)
+    if (!response.ok) throw new Error(`HTTP ${response.status} · ${label(path, request)}`)
     return response.json()
+  }
+
+  // ctx.rest is the scoped door; the plain fetch is the fallback for a backend that answers the
+  // namespace over HTTP but not through the bridge (an older runtime, or a half mounted late).
+  const rest = async (path, options) => {
+    const request = options || {}
+    if (!ctx || !ctx.rest) return viaFetch(path, request)
+    try {
+      return await ctx.rest(path, request)
+    } catch (err) {
+      try {
+        return await viaFetch(path, request)
+      } catch (retry) {
+        throw new Error(`${String((err && err.message) || err)} / fallback ${retry.message}`)
+      }
+    }
   }
   return {
     sources: () => rest('/sources'),
@@ -243,7 +261,7 @@ async function submitToChat(prompt) {
   }
   let created = null
   for (const params of [
-    { profile, title: "Cat's Cradle build", source: 'desktop' },
+    { profile, title: 'Lazy Plugin build', source: 'desktop' },
     { source: 'desktop' }
   ]) {
     try {
@@ -1174,7 +1192,7 @@ function Hero({ rows }) {
       jsxs('div', {
         className: 'cc-hero-main',
         children: [
-          jsx('div', { className: 'cc-word', children: "Cat's Cradle" }),
+          jsx('div', { className: 'cc-word', children: 'Lazy Plugin' }),
           jsx('div', {
             className: 'cc-thesis',
             children: 'a plugin is a spec, a validation, and one dispatch that proves it runs'
@@ -1283,9 +1301,9 @@ function LazyChip() {
   }, [])
   return jsx('button', {
     className: 'inline-flex h-full items-center px-1.5 text-[0.6875rem] text-(--ui-text-tertiary) hover:text-foreground',
-    title: "Cat's Cradle — make a plugin from a description or a job you already run",
+    title: 'Lazy Plugin — make a plugin from a description or a job you already run',
     onClick: () => host.navigate(ROUTE),
-    children: count == null ? 'Cat’s Cradle' : `Cat’s Cradle · ${count}`
+    children: count == null ? 'Lazy Plugin' : `Lazy Plugin · ${count}`
   })
 }
 
@@ -1293,7 +1311,7 @@ LazyChip.__api = null
 
 export default {
   id: ID,
-  name: "Cat's Cradle",
+  name: 'Lazy Plugin',
   register(ctx) {
     const api = makeApi(ctx)
     CreatorPanel.__api = api
@@ -1303,7 +1321,7 @@ export default {
       id: 'nav',
       area: SIDEBAR_NAV_AREA,
       order: 86,
-      data: { path: ROUTE, label: "Cat's Cradle", codicon: 'wand' }
+      data: { path: ROUTE, label: 'Lazy Plugin', codicon: 'wand' }
     })
     ctx.register({
       id: 'open',
