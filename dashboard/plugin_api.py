@@ -288,6 +288,90 @@ async def agent_done(payload: dict | None = None):
     return {"ok": queue.finish(_core().hermes_home(), str(payload.get("id") or ""))}
 
 
+_RUNS: dict[str, dict] = {}
+
+
+def _hermes_bin() -> str | None:
+    """The CLI the user runs. A one-shot turn inherits their profile, model and credentials."""
+    import os as _os
+    from shutil import which
+
+    for candidate in (
+        which("hermes"),
+        str(Path("/home/josh/.hermes/hermes-agent/.hermes/bin/hermes")),
+        _os.path.expanduser("~/.local/bin/hermes"),
+    ):
+        if candidate and Path(candidate).exists():
+            return candidate
+    return None
+
+
+def agent_prompt(idea: str, kind: str = "", name: str = "") -> str:
+    source = f' Build it from the {kind} "{name}".' if name else ""
+    return (
+        f"Use the lazyplugin_create tool once to build a plugin from this idea: {idea}.{source} "
+        "If the idea names nothing to fetch, read or write, or run, ask me one question instead "
+        "of building an empty tool. Then state in one line what the validator reported."
+    )
+
+
+@router.post("/agent/run")
+async def agent_run(payload: dict | None = None):
+    """Build by running one real turn of the user's own agent, as a subprocess.
+
+    A dashboard route has no turn, so it cannot resolve model credentials — but the CLI can, and
+    `hermes chat -q … --oneshot` is the same agent the user talks to, with their model. This is
+    what makes describe work in a browser, where there is no host SDK and no chat composer.
+    """
+    payload = payload or {}
+    idea = str(payload.get("idea") or "").strip()
+    if len(idea) < 10:
+        return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
+                            status_code=400)
+    binary = _hermes_bin()
+    if not binary:
+        return {"ok": False, "error": "the hermes CLI is not on this host"}
+
+    import os as _os
+    import subprocess as _sp
+    import threading as _th
+    import uuid as _uuid
+
+    home = _core().hermes_home()
+    runs = Path(home) / "lazy-plugin" / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    run_id = _uuid.uuid4().hex[:10]
+    log = runs / f"{run_id}.log"
+    prompt = agent_prompt(idea, str(payload.get("source_kind") or ""), str(payload.get("source_name") or ""))
+    _RUNS[run_id] = {"run": run_id, "done": False, "log": str(log), "started": time.time()}
+
+    def work() -> None:
+        env = {**_os.environ, "HERMES_HOME": str(home), "PYTHONUNBUFFERED": "1"}
+        try:
+            with open(log, "wb") as handle:
+                proc = _sp.run([binary, "chat", "-q", prompt, "--oneshot"], stdout=handle,
+                               stderr=_sp.STDOUT, cwd=str(Path.home()), env=env, timeout=900)
+            _RUNS[run_id].update({"done": True, "code": proc.returncode})
+        except Exception as exc:  # the log is the only place a failure can be read
+            _RUNS[run_id].update({"done": True, "code": -1, "error": str(exc)})
+
+    _th.Thread(target=work, daemon=True).start()
+    return {"ok": True, "run": run_id, "log": str(log)}
+
+
+@router.get("/agent/run/{run_id}")
+async def agent_run_state(run_id: str):
+    row = _RUNS.get(run_id)
+    if not row:
+        return JSONResponse({"ok": False, "error": "unknown run"}, status_code=404)
+    tail = ""
+    try:
+        tail = Path(row["log"]).read_text(errors="replace")[-800:]
+    except OSError:
+        pass
+    return {"ok": True, **row, "tail": tail}
+
+
 @router.post("/create/prefill")
 async def prefill_answers(payload: dict | None = None):
     """A sentence in, questionnaire answers out. No model, so it works on any surface."""

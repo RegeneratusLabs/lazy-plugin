@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-rpc-12'
+const BUILD = 'cat-turn-13'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -45,6 +45,8 @@ function makeApi(ctx) {
     questions: () => rest('/questions'),
     prefill: idea => rest('/create/prefill', { method: 'POST', body: { idea } }),
     request: payload => rest('/agent/request', { method: 'POST', body: payload }),
+    run: payload => rest('/agent/run', { method: 'POST', body: payload }),
+    runState: id => rest('/agent/run/' + id),
     pending: () => rest('/agent/pending'),
     remove: name => rest('/created/remove', { method: 'POST', body: { name } }),
     answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
@@ -560,51 +562,47 @@ function CreatorPanel() {
   // The provider key resolves inside a turn, not inside a background job: this process serves
   // several profiles and secrets are scoped per turn. So the page hands the build to the agent,
   // which calls lazyplugin_create itself, and the tile appears when it lands.
-  async function buildWithAgent() {
-    const prompt = `Use lazyplugin_create to build a plugin: ${idea.trim()}` +
-      (sourceName ? ` — build it from the ${kind} "${sourceName}"` : '') +
-      `. If the idea names nothing to fetch, read or run, ask me one question first instead of ` +
-      `building an empty tool.`
+  function buildWithAgent() {
+    const payload = { idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName }
     setBusy(true)
     setOut(null)
     setError('')
-    setStage('sending this to the agent…')
+    setStage('starting a turn with your agent…')
 
-    // composer.submit() has the same authority as typing, but it fails closed on its address:
-    // a plugin page is focused, so there is no mounted composer behind `null`. Target the focused
-    // session if one exists, otherwise open a fresh chat in the primary pane and submit there.
-    let sent = { ok: false, stage: '' }
-    try {
-      sent = await submitToChat(prompt)
-    } catch (err) {
-      sent = { ok: false, stage: String(err && err.message ? err.message : err) }
-    }
-    const accepted = !!(sent && sent.ok)
-    if (accepted) {
-      setStage('the agent is building it…')
-      pollForTile()
-      return
-    }
-
-    // No composer on this surface (the web dashboard in a phone browser): write it down.
+    // The route spawns `hermes chat -q … --oneshot`: a real turn of the user's own agent, with
+    // their model and credentials. It works in a browser, on a phone, and on the desktop app —
+    // none of which can reach a chat composer from a plugin page.
     CreatorPanel.__api
-      .request({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
-      .then(payload => {
-        if (!payload || !payload.ok) {
-          fail(((payload && payload.problems) || []).join(' · ') || 'could not hand this to the agent')
+      .run(payload)
+      .then(result => {
+        if (result && result.ok && result.run) {
+          setStage('your agent is building it… this is a real turn, so it takes a minute')
+          pollForTile(result.run)
           return
         }
-        setHandoff(payload.prompt || '')
+        handOff(payload, (result && (result.error || (result.problems || []).join(' · '))) || '')
+      })
+      .catch(() => handOff(payload, 'could not start a turn'))
+  }
+
+  function handOff(payload, why) {
+    CreatorPanel.__api
+      .request(payload)
+      .then(result => {
+        if (!result || !result.ok) {
+          fail(((result && result.problems) || []).join(' · ') || 'could not hand this to the agent')
+          return
+        }
+        setHandoff(result.prompt || '')
         setBusy(false)
         setStage('')
-        setError((sent && sent.stage ? sent.stage + ' · ' : '')
-          + 'queued instead — say “build the plugin I queued” in the app, or copy it below.')
+        setError((why ? why + ' · ' : '') + 'queued — copy it into chat, or say “build the plugin I queued”')
         if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
       })
       .catch(err => fail(String(err && err.message ? err.message : err)))
   }
 
-  function pollForTile() {
+  function pollForTile(runId) {
     let waited = 0
     const tick = () => {
       CreatorPanel.__api
@@ -621,8 +619,12 @@ function CreatorPanel() {
             return
           }
           waited += 3000
-          if (waited > 240000) {
-            fail('the agent has not produced a plugin yet — check the chat for what it said')
+          if (waited > 300000) {
+            CreatorPanel.__api
+              .runState(runId)
+              .then(state => fail('no plugin yet — the agent said: '
+                + ((state && state.tail) || 'nothing').trim().split('\n').slice(-3).join(' ')))
+              .catch(() => fail('no plugin yet — the run is still going'))
             return
           }
           setTimeout(tick, 3000)
