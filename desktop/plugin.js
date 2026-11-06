@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-6'
+const BUILD = 'cradle-7'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -295,14 +295,6 @@ async function submitToChat(prompt) {
   if (typeof request !== 'function') return { ok: false, stage: 'host.request is missing' }
   const profileAtom = host && host.state && host.state.profile
   const profile = profileAtom && typeof profileAtom.get === 'function' ? profileAtom.get() : undefined
-  const atom = host && host.state && host.state.focusedSessionId
-  const focused = atom && typeof atom.get === 'function' ? atom.get() : null
-  if (focused) {
-    try {
-      await request('prompt.submit', { profile, session_id: focused, text: prompt, source: 'desktop' })
-      return { ok: true }
-    } catch (err) { /* the focused session may be a stale tile: mint a fresh one below */ }
-  }
   let created = null
   for (const params of [
     { profile, title: 'Lazy Plugin build', source: 'desktop' },
@@ -315,15 +307,53 @@ async function submitToChat(prompt) {
   }
   const sessionId = created && created.session_id
   if (!sessionId) return { ok: false, stage: 'session.create returned no session_id' }
+  // The route and the sidebar address a session by its STORED id; prompt.submit wants the runtime
+  // one. Holding both is what lets us submit and then actually show the turn.
+  const stored = created.stored_session_id || created.session_id
   try {
     await request('prompt.submit', { profile, session_id: sessionId, text: prompt, source: 'desktop' })
   } catch (err) {
     return { ok: false, stage: 'prompt.submit failed: ' + String(err && err.message ? err.message : err) }
   }
+  let opened = false
   try {
-    if (host.openSession) host.openSession(sessionId)
-  } catch (err) { /* the chat opens on its own in the primary pane */ }
-  return { ok: true }
+    if (host.openSession) {
+      host.openSession(stored, { profile, intent: 'in-place' })
+      opened = true
+    }
+  } catch (err) { opened = false }
+  if (!opened) {
+    // No open verb on this host: fall back to the stored session's route so the turn is visible.
+    try { if (host.navigate) { host.navigate(`/session/${encodeURIComponent(stored)}`); opened = true } } catch (err) { opened = false }
+  }
+  return { ok: true, session: stored, opened }
+}
+
+// What the page remembers across navigation. The build is a backend turn, so leaving this page and
+// coming back must reattach to it instead of pretending nothing is running.
+const INFLIGHT_KEY = 'lazy-plugin.build.v1'
+const INFLIGHT_TTL = 20 * 60 * 1000
+
+function readInflight() {
+  try {
+    const raw = window.localStorage.getItem(INFLIGHT_KEY)
+    const value = raw ? JSON.parse(raw) : null
+    if (!value || !value.at) return null
+    if (Date.now() - value.at > INFLIGHT_TTL) {
+      window.localStorage.removeItem(INFLIGHT_KEY)
+      return null
+    }
+    return value
+  } catch (err) {
+    return null
+  }
+}
+
+function writeInflight(value) {
+  try {
+    if (value) window.localStorage.setItem(INFLIGHT_KEY, JSON.stringify(value))
+    else window.localStorage.removeItem(INFLIGHT_KEY)
+  } catch (err) { /* a plugin without storage still builds; it just forgets */ }
 }
 
 // The plate's cat: a plump tabby asleep on a cushion, engraved as one hairline line. Ink is
@@ -760,18 +790,28 @@ function CreatorPanel() {
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
   const [prefill, setPrefill] = useState(null)
-  const [handoff, setHandoff] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [stageAt, setStageAt] = useState(0)
   const [latch, setLatch] = useState(CreatorPanel.__building)
+
+  // Coming back to the page: pick the running build up where it was left.
+  useEffect(() => {
+    const inflight = readInflight()
+    if (!inflight) return
+    CreatorPanel.__seen = inflight.seen || []
+    CreatorPanel.__building = { at: inflight.at, idea: inflight.idea || '' }
+    setLatch(CreatorPanel.__building)
+    setBusy(true)
+    setStage(inflight.stage || 'your agent is still building — watching for the tile')
+    setStageAt((inflight.stageAt || inflight.at) / 1000)
+    pollForTile(null)
+  }, [])
 
   // A build outlives the click and the page: it is a thread on the backend. Without a module-level
   // latch a reload (or a second click) starts a second identical build, which is how two plugins
   // for one idea get made.
   useEffect(() => {
     if (!busy) {
-      CreatorPanel.__building = null
-      setLatch(null)
       setElapsed(0)
       return
     }
@@ -801,93 +841,20 @@ function CreatorPanel() {
   const options = kind === 'skill' ? sources.skills : sources.cron
   const canBuild = !busy && (idea.trim().length >= 10 || !!sourceName)
 
-  const STAGE_TEXT = {
-    'reading what you picked': 'reading what you picked…',
-    'asking the model for a spec': 'asking the model…',
-    'writing the files and validating': 'writing and checking the files…'
-  }
 
   function fail(message) {
+    CreatorPanel.__building = null
+    writeInflight(null)
+    setLatch(null)
     setBusy(false)
     setStage('')
+    setStageAt(0)
     setError(message)
-  }
-
-  function handle(state) {
-    if (state.stage === 'gone') {
-      fail('the build finished but its result expired — check Built so far')
-      return
-    }
-    if (state.stage) setStageAt(Number(state.stage_started) || 0)
-    if (state.stage && STAGE_TEXT[state.stage]) setStage(STAGE_TEXT[state.stage])
-    if (state.stage && !STAGE_TEXT[state.stage] && state.stage !== 'starting') setStage(state.stage)
-    if (state.ok === null || state.ok === undefined) return false
-    setBusy(false)
-    setStage('')
-    if (state.ok && state.result) {
-      setOut(state.result)
-      if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
-    } else if (String(state.error || '').includes('provider API key')) {
-      buildWithAgent()
-      return true
-    } else {
-      setError(state.error || 'the build did not produce a plugin')
-    }
-    return true
   }
 
   // The provider key resolves inside a turn, not inside a background job: this process serves
   // several profiles and secrets are scoped per turn. So the page hands the build to the agent,
   // which calls lazyplugin_create itself, and the tile appears when it lands.
-  function buildWithAgent() {
-    // Picking a source answers the question the sentence would: derive one instead of demanding it.
-    const fromSource = sourceName
-      ? `Build a plugin that turns the ${kind} "${sourceName}" into a reusable tool with a real ` +
-        `input and a real result. Read it first, then call lazyplugin_create.`
-      : ''
-    const payload = {
-      idea: idea.trim() || fromSource,
-      source_kind: sourceName ? kind : '',
-      source_name: sourceName
-    }
-    setBusy(true)
-    setOut(null)
-    setError('')
-    setStage('starting a turn with your agent…')
-
-    // The route spawns `hermes chat -q … --oneshot`: a real turn of the user's own agent, with
-    // their model and credentials. It works in a browser, on a phone, and on the desktop app —
-    // none of which can reach a chat composer from a plugin page.
-    CreatorPanel.__api
-      .run(payload)
-      .then(result => {
-        if (result && result.ok && result.run) {
-          setStage('your agent is building it… this is a real turn, so it takes a minute')
-          pollForTile(result.run)
-          return
-        }
-        handOff(payload, (result && (result.error || (result.problems || []).join(' · '))) || '')
-      })
-      .catch(() => handOff(payload, 'could not start a turn'))
-  }
-
-  function handOff(payload, why) {
-    CreatorPanel.__api
-      .request(payload)
-      .then(result => {
-        if (!result || !result.ok) {
-          fail(((result && result.problems) || []).join(' · ') || 'could not hand this to the agent')
-          return
-        }
-        setHandoff(result.prompt || '')
-        setBusy(false)
-        setStage('')
-        setError((why ? why + ' · ' : '') + 'queued — copy it into chat, or say “build the plugin I queued”')
-        if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
-      })
-      .catch(err => fail(String(err && err.message ? err.message : err)))
-  }
-
   // The build as a visible turn. The tile is not trusted when it appears: this page dispatches it
   // itself, so the verdict is never taken from the agent's word.
   function buildInChat() {
@@ -912,7 +879,16 @@ function CreatorPanel() {
     // Baseline the shelf first, so the tile we watch for is genuinely new.
     CreatorPanel.__api
       .created()
-      .then(payload => { CreatorPanel.__seen = ((payload && payload.created) || []).map(row => row.name) })
+      .then(payload => {
+        CreatorPanel.__seen = ((payload && payload.created) || []).map(row => row.name)
+        writeInflight({
+          at: Date.now(),
+          idea: payload.idea,
+          seen: CreatorPanel.__seen,
+          stage: 'your agent is building it in chat',
+          stageAt: Date.now()
+        })
+      })
       .catch(() => { CreatorPanel.__seen = [] })
       .then(() => submitToChat(chatPrompt(payload)))
       .then(result => {
@@ -922,14 +898,15 @@ function CreatorPanel() {
           pollForTile(null)
           return
         }
-        // No chat on this surface (a browser, a phone): the fixed templates still ship a plugin.
+        // Builds are agent turns now: a surface with no chat cannot build, and says so instead of
+        // quietly falling back to a different pipeline with a different trust story.
         CreatorPanel.__building = null
         setLatch(null)
         setBusy(false)
         setStage('')
         setStageAt(0)
-        setNote(result && result.stage ? `no chat here (${result.stage}) — using the fixed templates` : '')
-        build()
+        fail(`this surface cannot start a turn (${(result && result.stage) || 'no chat'}) — ` +
+          'open Cat\'s Cradle in the desktop app to build')
       })
       .catch(err => fail(String(err && err.message ? err.message : err)))
   }
@@ -973,6 +950,7 @@ function CreatorPanel() {
             setBusy(false)
             setStage('')
             setStageAt(0)
+            writeInflight(null)
             adoptTile(landed)
             return
           }
@@ -995,47 +973,6 @@ function CreatorPanel() {
         .catch(() => setTimeout(tick, 3000))
     }
     setTimeout(tick, 5000)
-  }
-
-  function build() {
-    setNote('')
-    setStageAt(Date.now() / 1000)
-    if (CreatorPanel.__building) {
-      fail('a build is already running — it lands in Built so far when it finishes')
-      return
-    }
-    CreatorPanel.__building = { at: Date.now(), idea: idea.trim() }
-    setLatch(CreatorPanel.__building)
-    setBusy(true)
-    setOut(null)
-    setError('')
-    setStage('starting…')
-    CreatorPanel.__api
-      .create({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
-      .then(start => {
-        if (!start || !start.job) {
-          const problems = (start && start.problems) || []
-          fail(problems.length ? problems.join(' · ') : (start && start.error) || 'could not start the build')
-          return
-        }
-        let waited = 0
-        const tick = () => {
-          CreatorPanel.__api
-            .job(start.job)
-            .then(state => {
-              if (handle(state)) return
-              waited += 1200
-              if (waited > 300000) {
-                fail('this is taking longer than it should — check Built so far in a moment')
-                return
-              }
-              setTimeout(tick, 1200)
-            })
-            .catch(err => fail(String(err && err.message ? err.message : err)))
-        }
-        setTimeout(tick, 800)
-      })
-      .catch(err => fail(String(err && err.message ? err.message : err)))
   }
 
   function chip(label, on, onClick) {
@@ -1099,15 +1036,7 @@ function CreatorPanel() {
         style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px', marginTop: '10px' },
         children: [
           jsx(TileButton, { onClick: buildInChat, disabled: !canBuild, primary: canBuild,
-            children: busy ? 'making it…' : 'make it in chat' }),
-          !busy
-            ? jsx('button', {
-                className: 'cc-example',
-                title: 'skip the agent and let the fixed templates render the spec',
-                onClick: build,
-                children: 'or run the fixed templates'
-              })
-            : null,
+            children: busy ? 'making it…' : 'make it' }),
           sourceName
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
@@ -1125,7 +1054,7 @@ function CreatorPanel() {
           busy
             ? jsx('span', {
                 className: 'cc-build-hint',
-                children: 'one model call, no streaming — a slow spec is the model thinking'
+                children: 'watch the chat pane — this page lights up when the tile lands'
               })
             : null,
           latch && !busy
@@ -1144,16 +1073,7 @@ function CreatorPanel() {
             className: 'cc-error',
             style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px' },
             children: [
-              jsx('span', { children: error }),
-              handoff
-                ? jsx(TileButton, {
-                    onClick: () => {
-                      if (navigator.clipboard) navigator.clipboard.writeText(handoff)
-                      setError('copied — paste it into chat and the agent will build it')
-                    },
-                    children: 'copy the request for chat'
-                  })
-                : null
+              jsx('span', { children: error })
             ]
           })
         : null,
