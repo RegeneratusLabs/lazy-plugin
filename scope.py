@@ -1,18 +1,23 @@
-"""Carry the caller's contextvars into a worker thread, and say plainly when a key is missing.
+"""Carry the caller's contextvars into a worker thread, and find the provider key honestly.
 
-One Hermes process serves many profiles. Anything running outside a turn — our build threads — must
-keep the profile scope it was started under; a bare `threading.Thread` starts with empty context, so
-the first secret read raises UnscopedSecretError (what a build looked like from the page).
+Two things this got wrong before, both worth keeping written down:
 
-`contextvars.copy_context()` is the same propagation `asyncio.to_thread` relies on. If the caller
-had no scope to inherit, the build still runs and `secret_probe` reports the missing key as a plain
-sentence instead of a traceback.
+1. A bare `threading.Thread` starts with empty contextvars. One gateway process serves several
+   profiles, so the first secret read raised UnscopedSecretError. `copy_context().run()` is the
+   same propagation `asyncio.to_thread` uses, and it is what a worker needs.
+2. The probe asked for `OPENCODE_GO_API_KEY` while this build's opencode-go provider reads
+   `OPENCODE_ZEN_API_KEY`. A probe that guesses the variable name blocks builds that would have
+   worked, so it checks every name the provider has used and reports "cannot tell" otherwise.
 """
 
 from __future__ import annotations
 
 import contextvars
-from typing import Any, Callable, Optional
+import os
+from typing import Any, Callable, Iterable, Optional
+
+# names seen across builds of the opencode-go provider; the first that resolves wins
+PROVIDER_KEY_NAMES = ("OPENCODE_ZEN_API_KEY", "OPENCODE_GO_API_KEY", "OPENCODE_API_KEY")
 
 
 def run_in_scope(fn: Callable[..., Any], *args: Any) -> Any:
@@ -20,12 +25,20 @@ def run_in_scope(fn: Callable[..., Any], *args: Any) -> Any:
     return contextvars.copy_context().run(fn, *args)
 
 
-def secret_probe(name: str = "OPENCODE_GO_API_KEY") -> Optional[bool]:
-    """True when this process can read *name* right now; None when the scope API is unavailable."""
-    try:
-        from agent import secret_scope
+def secret_probe(names: Optional[Iterable[str]] = None) -> Optional[bool]:
+    """True when a provider key is readable; None means "cannot tell, do not block".
 
-        value = secret_scope.get_secret(name)
-        return bool(value and str(value).strip())
-    except Exception:
-        return None
+    None is the important case: a wrong answer here turns a working build into a refusal.
+    """
+    saw_api = False
+    for name in (names or PROVIDER_KEY_NAMES):
+        try:
+            from agent import secret_scope
+
+            saw_api = True
+            value = secret_scope.get_secret(name)
+        except Exception:
+            value = os.environ.get(name)
+        if value and str(value).strip():
+            return True
+    return False if saw_api else None

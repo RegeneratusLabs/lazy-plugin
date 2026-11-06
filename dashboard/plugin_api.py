@@ -620,7 +620,7 @@ def _create_worker(entry: dict, idea: str, kind: str, source: str) -> None:
         llm = getattr(ctx, "llm", None) if ctx is not None else None
         creator = _creator_mod()
         entry["stage"] = "asking the model for a spec"
-        if _scope_mod().secret_probe("OPENCODE_GO_API_KEY") is False:
+        if _scope_mod().secret_probe() is False:
             entry.update(ok=False, stage="failed", error=_KEY_UNREADABLE)
             return
         drafted = creator.draft_spec(idea, llm, context)
