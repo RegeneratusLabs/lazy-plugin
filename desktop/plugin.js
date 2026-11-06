@@ -10,7 +10,33 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-source-15'
+const BUILD = 'cradle-1'
+
+// Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
+const CC = {
+  ink: '#1B0F26', panel: '#241432', panel2: '#2E1A3F', rule: '#4A2F63',
+  paper: '#EFE3F2', muted: '#B79BC8', accent: '#B48CD9', warn: '#D9A66B', fail: '#C9637A',
+  serif: 'Cormorant, "EB Garamond", "Iowan Old Style", Georgia, serif',
+  mono: 'ui-monospace, SFMono-Regular, Menlo, monospace'
+}
+
+const CC_STYLE = `
+.cc-page { background: ${CC.ink}; color: ${CC.paper}; border: 1px solid ${CC.rule};
+  box-shadow: inset 0 0 0 3px ${CC.ink}, inset 0 0 0 4px ${CC.rule}; padding: 20px 22px; }
+.cc-wordmark { font-family: ${CC.serif}; font-size: 1.45rem; letter-spacing: .04em;
+  color: ${CC.paper}; }
+.cc-thesis { font-family: ${CC.mono}; font-size: .64rem; color: ${CC.muted}; letter-spacing: .02em; }
+.cc-counts { font-family: ${CC.mono}; font-size: .64rem; color: ${CC.muted}; }
+.cc-tile { background: ${CC.panel}; border: 1px solid ${CC.rule}; border-radius: 3px; }
+.cc-tile:hover { background: ${CC.panel2}; }
+.cc-meta { font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted}; }
+.cc-pill { font-family: ${CC.mono}; font-size: .58rem; letter-spacing: .04em;
+  text-transform: lowercase; padding: 1px 6px; border-radius: 2px; border: 1px solid currentColor; }
+.cc-runs { color: ${CC.accent}; }
+.cc-key { color: ${CC.warn}; }
+.cc-broken { color: ${CC.fail}; }
+`
+
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -76,7 +102,7 @@ async function submitToChat(prompt) {
   const profileAtom = host && host.state && host.state.profile
   const profile = profileAtom && typeof profileAtom.get === 'function' ? profileAtom.get() : undefined
   for (const params of [
-    { profile, title: 'Lazy Plugin build', source: 'desktop' },
+    { profile, title: "Cat's Cradle build", source: 'desktop' },
     { source: 'desktop' }
   ]) {
     try {
@@ -1113,7 +1139,7 @@ LazyChip.__api = null
 
 export default {
   id: ID,
-  name: 'Lazy Plugin',
+  name: "Cat's Cradle",
   register(ctx) {
     const api = makeApi(ctx)
     CreatorPanel.__api = api
@@ -1123,7 +1149,7 @@ export default {
       id: 'nav',
       area: SIDEBAR_NAV_AREA,
       order: 86,
-      data: { path: ROUTE, label: 'Lazy Plugin', codicon: 'wand' }
+      data: { path: ROUTE, label: "Cat's Cradle", codicon: 'wand' }
     })
     ctx.register({
       id: 'open',
