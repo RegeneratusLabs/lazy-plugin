@@ -251,6 +251,43 @@ async def create_from_answers(payload: dict | None = None):
     return await asyncio.to_thread(creator.create, drafted["spec"])
 
 
+def _queue_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_queue_api", _PLUGIN_DIR / "queue.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
+@router.post("/agent/request")
+async def agent_request(payload: dict | None = None):
+    """Hand a description to the agent. Returns the queued request, not a fake job id."""
+    payload = payload or {}
+    idea = str(payload.get("idea") or "").strip()
+    if len(idea) < 10:
+        return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
+                            status_code=400)
+    queue = _queue_mod()
+    home = _core().hermes_home()
+    request = queue.enqueue(home, idea, str(payload.get("source_kind") or ""),
+                            str(payload.get("source_name") or ""))
+    return {"ok": True, "queued": request, "prompt": queue.as_prompt([request]),
+            "why": "a page cannot start a turn; the agent picks this up and calls lazyplugin_create"}
+
+
+@router.get("/agent/pending")
+async def agent_pending():
+    queue = _queue_mod()
+    rows = queue.pending(_core().hermes_home())
+    return {"ok": True, "requests": rows, "prompt": queue.as_prompt(rows)}
+
+
+@router.post("/agent/done")
+async def agent_done(payload: dict | None = None):
+    payload = payload or {}
+    queue = _queue_mod()
+    return {"ok": queue.finish(_core().hermes_home(), str(payload.get("id") or ""))}
+
+
 @router.post("/create/prefill")
 async def prefill_answers(payload: dict | None = None):
     """A sentence in, questionnaire answers out. No model, so it works on any surface."""

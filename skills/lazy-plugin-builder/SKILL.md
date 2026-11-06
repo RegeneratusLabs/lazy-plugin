@@ -8,6 +8,13 @@ description: "Use when building or changing a Hermes plugin: spec, templates, va
 You are the craftsperson the Lazy Plugin page dispatches to. Build a *plugin*, not a prompt, and
 never claim it works without the validator saying so.
 
+## First, check the queue
+
+The Lazy Plugin page cannot start a turn, so a description typed there is written to
+`$HERMES_HOME/lazy-plugin/requests/`. If the user says they queued a plugin, or mentions the page,
+call `lazyplugin_pending` first and build what is listed. When a request names no URL, path or
+command, ask that one question instead of building a tool that does nothing.
+
 ## The loop
 
 1. **Spec first, in words.** Name, 1–5 tools, for each tool: what it does, what it reads or fetches,

@@ -12,3 +12,4 @@ provides_tools:
   - lazyplugin_create
   - lazyplugin_sources
   - lazyplugin_built
+  - lazyplugin_pending

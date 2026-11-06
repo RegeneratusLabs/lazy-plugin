@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-quiz-7'
+const BUILD = 'cat-agent-8'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -44,6 +44,8 @@ function makeApi(ctx) {
       { method: 'POST', body: { name, open_pr: !!openPr } }),
     questions: () => rest('/questions'),
     prefill: idea => rest('/create/prefill', { method: 'POST', body: { idea } }),
+    request: payload => rest('/agent/request', { method: 'POST', body: payload }),
+    pending: () => rest('/agent/pending'),
     answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
@@ -528,16 +530,26 @@ function CreatorPanel() {
       ? window.hermes.send.bind(window.hermes)
       : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
     if (!send) {
-      // web dashboard and mobile have no agent channel: turn the sentence into answers instead
+      // No agent channel from a page: write the request down. The agent picks it up and calls
+      // lazyplugin_create in a real turn, where the provider key resolves.
       CreatorPanel.__api
-        .prefill(idea.trim())
+        .request({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
         .then(payload => {
+          if (!payload || !payload.ok) {
+            fail(((payload && payload.problems) || []).join(' · ') || 'could not hand this to the agent')
+            return
+          }
+          CreatorPanel.__api
+            .prefill(idea.trim())
+            .then(filled => {
+              if (filled && filled.answers) CreatorPanel.__setPrefill(filled.answers)
+            })
+            .catch(() => {})
           setBusy(false)
           setStage('')
-          setError('this surface has no agent channel, so your sentence is now the form above — check it and press make it')
-          if (CreatorPanel.__setPrefill && payload && payload.answers) {
-            CreatorPanel.__setPrefill(payload.answers)
-          }
+          setError('handed to the agent — say “build the plugin I queued” in chat, or it will pick it '
+            + 'up on your next message. Nothing is built until it does.')
+          if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
         })
         .catch(err => fail(String(err && err.message ? err.message : err)))
       return
