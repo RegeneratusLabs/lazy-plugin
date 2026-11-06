@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-8'
+const BUILD = 'cradle-9'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -284,6 +284,29 @@ function chatPrompt(payload) {
       'projection) and call lazyplugin_create again under a new name — or stop and quote me the ' +
       'exact failing line.',
     '6. End your reply with three lines: the plugin name, the validate line, the dispatch line.'
+  ].join('\n')
+}
+
+// An edit is a chat turn too: the agent is the only thing that can read a bundle, change a handler
+// and re-validate it, and the page keeps owning the gate afterwards.
+function editPrompt(name, request) {
+  return [
+    `Edit the generated plugin "${name}" in ~/.hermes/lazy-plugin/created/${name}/.`,
+    '',
+    `What I want changed: ${request}`,
+    '',
+    'Rules:',
+    '1. Read the files before changing them (the lazy-plugin-builder skill is the brief if you have ' +
+      'not loaded it this session).',
+    '2. Keep plugin.yaml and __init__.py in step: a declared tool that is not registered, or the ' +
+      'other way round, fails capability matching.',
+    '3. Handler bodies stay one of the four shapes — command, http, file, stub — take one positional ' +
+      'params plus **kwargs, and return json.dumps(...). No hand-rolled signatures the registry ' +
+      'cannot fill.',
+    '4. Do not install it, do not touch ~/.hermes/plugins, do not edit the catalog entry.',
+    '5. Finish with: hermes plugins validate ~/.hermes/lazy-plugin/created/' + name +
+      ' — and quote its result. The page dispatches the bundle again itself, so do not claim it works.',
+    '6. End with two lines: the files you changed, and the validate line.'
   ].join('\n')
 }
 
@@ -1093,33 +1116,47 @@ CreatorPanel.__setPrefill = null
 CreatorPanel.__setIdea = null
 CreatorPanel.__building = null
 
-function ChatEdit({ name, prompt, onSaved }) {
+function ChatEdit({ name, onSaved }) {
   const [text, setText] = useState('')
   const [note, setNote] = useState('')
-  const [sent, setSent] = useState(false)
+  const [sending, setSending] = useState(false)
+
+  // The edit lands when the bundle changes, not when the agent says so: keep asking the shelf while
+  // the turn runs, so the tile's pill and metadata catch up on their own.
+  function watchForEdit() {
+    let waited = 0
+    const tick = () => {
+      CreatorPanel.__api
+        .created()
+        .then(() => { if (onSaved) onSaved() })
+        .catch(() => {})
+        .finally(() => {
+          waited += 6000
+          if (waited < 180000) setTimeout(tick, 6000)
+        })
+    }
+    setTimeout(tick, 6000)
+  }
 
   function ask() {
     const request = text.trim()
-    if (request.length < 4) return
-    const composer = host && host.composer
-    if (!composer || typeof composer.submit !== 'function') {
-      setNote('this surface has no chat — paste the request there instead')
-      return
-    }
-    const handed = composer.submit(null,
-      `Change the generated plugin "${name}" in ~/.hermes/lazy-plugin/created/${name}/. ` +
-      `Request: ${request}. Load the lazy-plugin-builder skill, read the files before editing, ` +
-      `keep plugin.yaml and __init__.py in step, then run: hermes plugins validate ` +
-      `~/.hermes/lazy-plugin/created/${name}`
-    )
-    if (!handed) {
-      setNote('nothing is focused in chat — open a chat and try again')
-      return
-    }
-    setText('')
-    setSent(true)
-    setNote('handed to the agent — it will read the bundle, edit it and re-validate')
-    if (onSaved) onSaved()
+    if (request.length < 4 || sending) return
+    setSending(true)
+    setNote('handing this to your agent…')
+    submitToChat(editPrompt(name, request))
+      .then(result => {
+        if (!result || !result.ok) {
+          setNote(`could not start the turn: ${(result && result.stage) || 'no chat on this surface'}`)
+          return
+        }
+        setText('')
+        setNote(result.opened
+          ? 'handed over — the chat is open, watch the edit, the tile follows'
+          : 'handed over — open the chat to watch it, the tile follows')
+        watchForEdit()
+      })
+      .catch(err => setNote(String(err && err.message ? err.message : err)))
+      .finally(() => setSending(false))
   }
 
   return jsxs('div', {
@@ -1134,21 +1171,21 @@ function ChatEdit({ name, prompt, onSaved }) {
             onChange: event => setText(event.target.value),
             rows: 2,
             placeholder: 'make the price ceiling $700, and say which listing won',
-            className: 'cc-area',
+            className: 'cc-area cc-edit-area',
             style: { flex: 1, minWidth: 0, fontSize: '.68rem', padding: '5px 7px' }
           }),
           jsx(TileButton, {
             onClick: ask,
-            disabled: text.trim().length < 4,
-            primary: text.trim().length >= 4,
-            children: 'send'
+            disabled: text.trim().length < 4 || sending,
+            primary: text.trim().length >= 4 && !sending,
+            children: sending ? 'sending…' : 'send'
           })
         ]
       }),
       jsx('div', {
         className: 'cc-note',
         style: { marginTop: '5px' },
-        children: note || (sent ? 'sent' : 'plain english — the agent edits the files and re-validates')
+        children: note || 'plain english — the agent reads the files, edits them and re-validates'
       })
     ]
   })
