@@ -806,8 +806,41 @@ def create(spec: dict, outbox: Optional[Path] = None) -> dict:
         path.write_text(content, encoding="utf-8")
 
     check = validate_plugin(target)
-    return {"ok": True, "stage": "written", "name": clean["name"], "dir": str(target),
-            "files": sorted(files), "spec": clean, "validation": check}
+
+    # Structure is not behaviour: load it and call every tool once. A build that cannot run is
+    # reported as such now, not discovered later by whoever installs it.
+    report = smoke_plugin(target)
+    return {"ok": True, "stage": "checked", "name": clean["name"], "dir": str(target),
+            "files": sorted(files), "spec": clean, "validation": check,
+            "smoke": report, "works": report.get("verdict") == "works",
+            "headline": _smoke_headline(report)}
+
+
+def _smoke_mod():
+    spec = importlib.util.spec_from_file_location(
+        "lazyplugin_smoke_creator", Path(__file__).resolve().parent / "smoke.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+def smoke_plugin(path: Path, live: bool = True) -> dict:
+    """Run the smoke test and keep the report beside the bundle, so a tile can show it."""
+    try:
+        module = _smoke_mod()
+        report = module.smoke(path, live=live)
+        module.write_report(path, report)
+        return report
+    except Exception as exc:
+        return {"plugin": Path(path).name, "verdict": "unchecked", "tools": [],
+                "notes": [f"smoke test could not run: {type(exc).__name__}: {exc}"]}
+
+
+def _smoke_headline(report: dict) -> str:
+    try:
+        return _smoke_mod().headline(report)
+    except Exception:
+        return "not checked"
 
 
 def validate_plugin(path: Path, timeout: int = 180) -> dict:

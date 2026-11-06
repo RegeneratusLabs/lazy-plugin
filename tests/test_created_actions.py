@@ -20,7 +20,16 @@ def api(monkeypatch, tmp_path):
     (bundle / "plugin.yaml").write_text(
         "name: gpu-price-watch\nversion: 1.2.0\ndescription: Watch GPU prices.\n"
         "provides_tools:\n  - check_prices\n", encoding="utf-8")
-    (bundle / "__init__.py").write_text("def register(ctx):\n    pass\n", encoding="utf-8")
+    # A package that actually runs: the install gate smoke-tests before it links anything.
+    (bundle / "__init__.py").write_text(
+        "def handle_check_prices(params, config):\n"
+        "    return {'ok': True, 'count': 0, 'items': []}\n"
+        "\n"
+        "def register(ctx):\n"
+        "    ctx.register_tool(name='check_prices', toolset='gpu',\n"
+        "                      schema={'name': 'check_prices'},\n"
+        "                      handler=handle_check_prices, description='x')\n",
+        encoding="utf-8")
 
     cs = importlib.util.spec_from_file_location(f"creator_{id(tmp_path)}", ROOT / "creator.py")
     creator = importlib.util.module_from_spec(cs)
@@ -47,11 +56,26 @@ def test_install_refuses_to_clobber_an_existing_plugin(api):
 
 
 def test_install_refuses_a_package_that_does_not_validate(api, monkeypatch):
-    monkeypatch.setattr(api, "_creator_mod",
-                        lambda: type("C", (), {"validate_plugin": staticmethod(
-                            lambda path, timeout=180: {"ok": False, "failures": ["✗ boom"], "tail": []})}))
+    creator = api._creator_mod()
+    monkeypatch.setattr(creator, "validate_plugin",
+                        lambda path, timeout=180: {"ok": False, "failures": ["\u2717 boom"], "tail": []})
     out = api._install_created("gpu-price-watch")
     assert out["ok"] is False and "does not validate" in out["error"]
+
+
+def test_install_refuses_a_plugin_that_does_not_run(api, tmp_path):
+    bundle = tmp_path / "lazy-plugin" / "created" / "gpu-price-watch" / "__init__.py"
+    bundle.write_text(
+        "def handle_check_prices(params, config):\n"
+        "    raise NotImplementedError('This tool is a scaffold')\n"
+        "\n"
+        "def register(ctx):\n"
+        "    ctx.register_tool(name='check_prices', toolset='gpu',\n"
+        "                      schema={'name': 'check_prices'},\n"
+        "                      handler=handle_check_prices, description='x')\n",
+        encoding="utf-8")
+    out = api._install_created("gpu-price-watch")
+    assert out["ok"] is False and "does not run" in out["error"]
 
 
 def test_install_rejects_an_unknown_name(api):

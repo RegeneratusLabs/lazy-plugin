@@ -149,6 +149,33 @@ def _source_context(kind: str, name: str) -> str:
         return ""
 
 
+def _smoke_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_smoke_api", _PLUGIN_DIR / "smoke.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
+@router.post("/created/smoke")
+async def smoke_created(payload: dict | None = None):
+    """Call every tool in a generated plugin for real and report what came back."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    bundle = _bundle(name)
+    if bundle is None:
+        return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    live = payload.get("live", True) is not False
+
+    def run() -> dict:
+        module = _smoke_mod()
+        report = module.smoke(bundle, live=live)
+        module.write_report(bundle, report)
+        return report
+
+    report = await asyncio.to_thread(run)
+    return {"ok": True, "smoke": report, "headline": _smoke_mod().headline(report)}
+
+
 @router.get("/created")
 async def created():
     """Everything this plugin has generated so far. Never installed, always inspectable."""
@@ -190,8 +217,19 @@ def _created() -> dict:
                 sha = re.search(r"^sha:\s*(\S+)", text, re.M)
                 if repo:
                     published = {"repo": repo.group(1), "sha": sha.group(1) if sha else ""}
+            smoke = None
+            smoke_path = child / "smoke.json"
+            if smoke_path.exists():
+                try:
+                    stored = json.loads(smoke_path.read_text(encoding="utf-8"))
+                    smoke = {"verdict": stored.get("verdict"),
+                             "headline": _smoke_mod().headline(stored),
+                             "checked": stored.get("checked"), "seconds": stored.get("seconds")}
+                except Exception:
+                    smoke = {"verdict": "unchecked", "headline": "smoke report unreadable"}
             rows.append({
                 "name": name,
+                "smoke": smoke,
                 "title": str(manifest.get("title") or name.replace("-", " ").replace("_", " ").title()),
                 "description": " ".join(str(manifest.get("description") or "").split()),
                 "version": str(manifest.get("version") or ""),
@@ -503,11 +541,19 @@ async def install_created(payload: dict | None = None):
     return await asyncio.to_thread(_install_created, name)
 
 
-def _install_created(name: str) -> dict:
+def _install_created(name: str, force: bool = False) -> dict:
     core = _core()
     source = core.state_dir() / "created" / name
     if not name or not (source / "plugin.yaml").exists():
         return {"ok": False, "error": f"no generated plugin named {name!r}"}
+    # Validating proves the package is shaped right; smoke proves it runs. A tool that raises from
+    # a stub body is installable and useless, which is exactly what nobody asked for.
+    creator = _creator_mod()
+    report = creator.smoke_plugin(source, live=False)
+    if report.get("verdict") in ("broken",) and not force:
+        return {"ok": False, "smoke": report,
+                "error": "this plugin does not run: " + creator._smoke_headline(report)
+                         + " — open it in the editor, or run the smoke test for detail"}
     publish = _publish_mod()
     return publish.install_local(source, name, core.hermes_home() / "plugins",
                                  _creator_mod().validate_plugin)

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-turn-13'
+const BUILD = 'cat-smoke-14'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -49,6 +49,7 @@ function makeApi(ctx) {
     runState: id => rest('/agent/run/' + id),
     pending: () => rest('/agent/pending'),
     remove: name => rest('/created/remove', { method: 'POST', body: { name } }),
+    smokeTest: name => rest('/created/smoke', { method: 'POST', body: { name } }),
     answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
@@ -924,10 +925,19 @@ function PluginTile({ plugin, onChanged }) {
             children: [
               jsx('span', { className: 'text-[0.84rem] font-medium text-foreground', children: plugin.title || plugin.name }),
               plugin.validated === true
-                ? jsx(Badge, { tone: 'good', children: 'checked' })
+                ? jsx(Badge, { tone: 'quiet', children: 'valid' })
                 : plugin.validated === false
                   ? jsx(Badge, { tone: 'warn', children: 'needs a fix' })
-                  : jsx(Badge, { tone: 'quiet', children: 'unchecked' })
+                  : jsx(Badge, { tone: 'quiet', children: 'unchecked' }),
+              plugin.smoke && plugin.smoke.verdict === 'works'
+                ? jsx(Badge, { tone: 'good', children: 'runs' })
+                : plugin.smoke && plugin.smoke.verdict === 'needs-key'
+                  ? jsx(Badge, { tone: 'warn', children: 'needs a key' })
+                  : plugin.smoke && plugin.smoke.verdict === 'broken'
+                    ? jsx(Badge, { tone: 'warn', children: 'broken' })
+                    : plugin.smoke
+                      ? jsx(Badge, { tone: 'quiet', children: String(plugin.smoke.verdict || 'unchecked') })
+                      : null
             ]
           }),
           jsx('span', { className: 'font-mono text-[0.56rem] text-(--ui-text-quaternary)', children: plugin.version ? `v${plugin.version}` : '' })
@@ -938,6 +948,13 @@ function PluginTile({ plugin, onChanged }) {
         style: { display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' },
         children: plugin.description || 'no description'
       }),
+      plugin.smoke && plugin.smoke.headline
+        ? jsx('div', {
+            className: 'text-[0.62rem] leading-[1.3]',
+            style: { color: plugin.smoke.verdict === 'works' ? 'var(--ui-text-secondary)' : 'var(--ui-text-tertiary)' },
+            children: plugin.smoke.headline
+          })
+        : null,
       jsxs('div', {
         className: 'flex flex-wrap items-center gap-1.5 text-[0.6rem] text-(--ui-text-quaternary)',
         children: [
@@ -964,6 +981,21 @@ function PluginTile({ plugin, onChanged }) {
               ? 'commit the current files to the same repo and repoint the catalog entry at the new commit'
               : 'create a public repo, pin the commit, write the catalog entry',
             children: busy === 'publish' ? 'publishing…' : plugin.published ? 'republish' : 'publish'
+          }),
+          jsx(TileButton, {
+            onClick: () => {
+              setBusy('smoke')
+              CreatorPanel.__api
+                .smokeTest(plugin.name)
+                .then(result => {
+                  if (result && result.ok && onSmoked) onSmoked(plugin.name, result.headline)
+                  else setNote((result && result.error) || 'smoke test could not run')
+                })
+                .catch(err => setNote(String(err && err.message ? err.message : err)))
+                .finally(() => setBusy(''))
+            },
+            disabled: !!busy,
+            children: busy === 'smoke' ? 'testing…' : 'test it'
           }),
           jsx(TileButton, {
             onClick: () => setEditing(value => !value),
