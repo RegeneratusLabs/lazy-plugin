@@ -301,6 +301,9 @@ async def agent_request(payload: dict | None = None):
     """Hand a description to the agent. Returns the queued request, not a fake job id."""
     payload = payload or {}
     idea = str(payload.get("idea") or "").strip()
+    if len(idea) < 10 and str(payload.get("source_name") or "").strip():
+        idea = (f'Turns the {payload.get("source_kind") or "workflow"} '
+                f'"{payload.get("source_name")}" into a reusable plugin')
     if len(idea) < 10:
         return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
                             status_code=400)
@@ -344,7 +347,17 @@ def _hermes_bin() -> str | None:
     return None
 
 
-def agent_prompt(idea: str, kind: str = "", name: str = "") -> str:
+def agent_prompt(idea: str, kind: str = "", name: str = "", context: str = "") -> str:
+    """The one-shot brief. With a source, the source goes in the prompt — the turn has no memory."""
+    if name and context:
+        return (
+            f"Turn the {kind} \"{name}\" into a Hermes plugin. Here it is:\n\n{context[:6000]}\n\n"
+            "Call lazyplugin_create exactly once with an idea that names the concrete endpoint, "
+            "command or file the plugin acts on, the parameters it takes and what it returns. "
+            "If that workflow has nothing a tool can fetch, read or run, ask me one question "
+            "instead of inventing one. Then state in one line what the validator and the smoke "
+            "test reported."
+        )
     source = f' Build it from the {kind} "{name}".' if name else ""
     return (
         f"Use the lazyplugin_create tool once to build a plugin from this idea: {idea}.{source} "
@@ -363,6 +376,9 @@ async def agent_run(payload: dict | None = None):
     """
     payload = payload or {}
     idea = str(payload.get("idea") or "").strip()
+    if len(idea) < 10 and str(payload.get("source_name") or "").strip():
+        idea = (f'Turns the {payload.get("source_kind") or "workflow"} '
+                f'"{payload.get("source_name")}" into a reusable plugin')
     if len(idea) < 10:
         return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
                             status_code=400)
@@ -380,7 +396,15 @@ async def agent_run(payload: dict | None = None):
     runs.mkdir(parents=True, exist_ok=True)
     run_id = _uuid.uuid4().hex[:10]
     log = runs / f"{run_id}.log"
-    prompt = agent_prompt(idea, str(payload.get("source_kind") or ""), str(payload.get("source_name") or ""))
+    context = ""
+    if str(payload.get("source_name") or "").strip():
+        try:
+            context = _creator_mod().source_context(
+                _core(), str(payload.get("source_kind") or ""), str(payload.get("source_name") or ""))
+        except Exception:
+            context = ""
+    prompt = agent_prompt(idea, str(payload.get("source_kind") or ""),
+                          str(payload.get("source_name") or ""), context)
     _RUNS[run_id] = {"run": run_id, "done": False, "log": str(log), "started": time.time()}
 
     def work() -> None:

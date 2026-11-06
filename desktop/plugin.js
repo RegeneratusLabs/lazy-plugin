@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-smoke-14'
+const BUILD = 'cat-source-15'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -564,7 +564,16 @@ function CreatorPanel() {
   // several profiles and secrets are scoped per turn. So the page hands the build to the agent,
   // which calls lazyplugin_create itself, and the tile appears when it lands.
   function buildWithAgent() {
-    const payload = { idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName }
+    // Picking a source answers the question the sentence would: derive one instead of demanding it.
+    const fromSource = sourceName
+      ? `Build a plugin that turns the ${kind} "${sourceName}" into a reusable tool with a real ` +
+        `input and a real result. Read it first, then call lazyplugin_create.`
+      : ''
+    const payload = {
+      idea: idea.trim() || fromSource,
+      source_kind: sourceName ? kind : '',
+      source_name: sourceName
+    }
     setBusy(true)
     setOut(null)
     setError('')
