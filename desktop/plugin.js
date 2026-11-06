@@ -241,7 +241,7 @@ function Built({ out }) {
               jsx('span', {
                 className: 'text-[0.6rem] uppercase tracking-wide',
                 style: { color: check.ok ? 'var(--ui-accent)' : 'var(--ui-text-tertiary)' },
-                children: check.ok ? 'validated' : 'needs work'
+                children: check.ok ? 'passes checks' : 'needs work'
               })
             ]
           }),
@@ -356,6 +356,18 @@ function Questionnaire({ onResult, initial }) {
   }, [initial])
 
   const ready = (answers.purpose || '').trim().length >= 10
+  const act = String(answers.action || '')
+  const doing = act === 'fetch a URL'
+    ? `fetch ${answers.target || '⚠ no URL yet'}`
+    : act === 'read or write a file'
+      ? `${answers.target ? 'read or write ' + answers.target : '⚠ no path yet'}`
+      : act === 'run a command'
+        ? `run ${answers.target || '⚠ no command yet'}`
+        : 'be a scaffold to fill in later'
+  const preview = ready
+    ? `It will ${doing}${answers.returns ? `, and give back ${answers.returns}` : ', and give nothing back ⚠'}` +
+      ` · ${String(answers.trigger || '').startsWith('after') ? 'after every session' : 'when you ask'}`
+    : ''
 
   function submit() {
     setBusy(true)
@@ -383,13 +395,15 @@ function Questionnaire({ onResult, initial }) {
       className: 'w-full rounded border bg-transparent px-1.5 py-1 text-[0.7rem] text-foreground outline-none',
       style: { borderColor: 'var(--ui-stroke-tertiary)' }
     }
+    const wide = item.id === 'purpose'
     return jsxs('div', {
       className: 'flex flex-col gap-0.5',
+      style: wide ? { gridColumn: '1 / -1' } : undefined,
       children: [
         jsx('label', { className: 'text-[0.6rem] uppercase tracking-wide text-(--ui-text-quaternary)', children: item.label }),
         item.type === 'select'
           ? jsx('select', { ...shared, children: (item.options || []).map(option => jsx('option', { value: option, children: option }, option)) })
-          : jsx('textarea', { ...shared, rows: item.rows || 1, placeholder: item.placeholder || '' })
+          : jsx('textarea', { ...shared, rows: wide ? 3 : (item.rows || 1), placeholder: item.placeholder || '' })
       ]
     }, item.id)
   }
@@ -425,10 +439,17 @@ function Questionnaire({ onResult, initial }) {
           }),
           jsx('span', {
             className: 'text-[0.6rem] text-(--ui-text-quaternary)',
-            children: note || (ready ? 'no model, no key — the spec is built from these answers' : 'start with what it should do')
+            children: note || (ready ? '' : 'start with what it should do')
           })
         ]
-      })
+      }),
+      preview
+        ? jsx('div', {
+            className: 'rounded px-2 py-1 text-[0.62rem]',
+            style: { background: 'var(--ui-bg-tertiary)', color: 'var(--ui-text-tertiary)' },
+            children: preview
+          })
+        : null,
     ]
   })
 }

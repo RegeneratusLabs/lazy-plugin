@@ -489,15 +489,36 @@ def spec_from_answers(answers: dict) -> dict:
         return {"ok": False, "stage": "input",
                 "problems": ["say what it should do in one sentence"]}
 
-    name = (answers.get("name") or "").strip() or " ".join(purpose.split()[:5])
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "new-plugin"
-    kind = ANSWER_KINDS.get(str(answers.get("action") or "").strip().lower(), "stub")
     target = _clean(answers.get("target") or "", 200)
     returns = _clean(answers.get("returns") or "", 200)
     trigger = str(answers.get("trigger") or "when I ask").strip().lower()
     secret = _clean(answers.get("secret") or "", 60).upper().replace(" ", "_")
     category = str(answers.get("category") or "tools").strip().lower()
+    kind = ANSWER_KINDS.get(str(answers.get("action") or "").strip().lower(), "stub")
 
+    # Name it from where the work happens, not from the whole sentence
+    hint = ""
+    if kind == "http" and target:
+        hint = re.sub(r"^https?://(www\\.)?", "", target).split("/")[0].split(".")[0]
+    elif kind == "file" and target:
+        hint = Path(target).stem
+    elif kind == "command" and target:
+        hint = target.split()[0]
+    name = (answers.get("name") or "").strip() or (
+        f"{hint}-{purpose.split()[0]}" if hint else " ".join(purpose.split()[:3]))
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "new-plugin"
+    if kind != "stub":
+        # The hollow-plugin failure: without a real target and something to return, the build
+        # produces a tool that "calls an endpoint" with nothing to call.
+        missing = []
+        if not target:
+            missing.append({"http": "what URL should it fetch?",
+                            "file": "which file or folder should it read or write?",
+                            "command": "which command should it run?"}[kind])
+        if len(returns) < 4:
+            missing.append("what should it give back?")
+        if missing:
+            return {"ok": False, "stage": "input", "problems": missing}
     verb = re.sub(r"[^a-z0-9]+", "_", purpose.lower().split()[0])[:18] or "run"
     stem = slug.replace("-", "_")
     tool_name = re.sub(r"_+", "_", stem if stem.startswith(verb) else f"{verb}_{stem}")[:40].strip("_") or "run_action"

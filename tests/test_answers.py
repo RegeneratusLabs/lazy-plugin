@@ -28,7 +28,7 @@ def test_answers_produce_a_spec_that_validates(creator):
     out = creator.spec_from_answers(BASE)
     assert out["ok"] is True
     spec = out["spec"]
-    assert spec["name"] == "watch-gpu-prices-and-tell"
+    assert spec["name"] == "example-watch"   # named from where it fetches, not the sentence
     assert spec["tools"][0]["kind"] == "http"
     assert "cheapest listing" in spec["tools"][0]["description"]
     assert spec["hooks"] == []
@@ -46,6 +46,19 @@ def test_secret_and_trigger_are_carried(creator):
         **BASE, "secret": "my api key", "trigger": "after every session"})["spec"]
     assert spec["tools"][0]["requires_env"] == ["MY_API_KEY"]
     assert spec["hooks"] == ["on_session_end"]
+
+
+def test_a_plugin_that_cannot_do_anything_is_refused(creator):
+    """The hollow build: "calls an endpoint" with no URL and nothing to return."""
+    out = creator.spec_from_answers({**BASE, "target": "", "returns": ""})
+    assert out["ok"] is False
+    assert "what URL should it fetch?" in out["problems"]
+    assert "what should it give back?" in out["problems"]
+
+
+def test_a_scaffold_is_allowed_without_a_target(creator):
+    out = creator.spec_from_answers({**BASE, "action": "just scaffold it", "target": "", "returns": ""})
+    assert out["ok"] is True and out["spec"]["tools"][0]["kind"] == "stub"
 
 
 def test_a_too_short_purpose_is_refused(creator):
