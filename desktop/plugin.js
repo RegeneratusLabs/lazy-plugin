@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-agent-10'
+const BUILD = 'cat-agent-11'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -53,6 +53,25 @@ function makeApi(ctx) {
     saveFile: (name, path, content) => rest('/created/file', { method: 'POST', body: { name, path, content } }),
     share: name => rest('/created/share', { method: 'POST', body: { name } })
   }
+}
+
+function submitToChat(prompt) {
+  const composer = host && host.composer
+  if (!composer || typeof composer.submit !== 'function') return false
+  const atom = host.state && host.state.focusedSessionId
+  const focused = atom && typeof atom.get === 'function' ? atom.get() : null
+  try {
+    if (focused && composer.submit(focused, prompt)) return true
+  } catch (err) { /* fall through to a fresh chat */ }
+  try {
+    if (host.newChat) host.newChat()
+    // 'new' is answered only by the primary pane while it shows no session
+    if (composer.submit('new', prompt)) return true
+  } catch (err) { /* no pane to submit into */ }
+  try {
+    if (composer.submit(null, prompt)) return true
+  } catch (err) { /* nothing focused */ }
+  return false
 }
 
 function LazyCat({ size = 30 }) {
@@ -531,21 +550,14 @@ function CreatorPanel() {
     setError('')
     setStage('sending this to the agent…')
 
-    // host.composer.submit() has the same authority as typing: it starts a real turn in the
-    // focused chat, where the host resolves the user's own model and credentials.
-    const composer = host && host.composer
-    if (composer && typeof composer.submit === 'function') {
-      let sent = false
-      try {
-        sent = composer.submit(null, prompt)
-      } catch (err) {
-        sent = false
-      }
-      if (sent) {
-        setStage('the agent is building it…')
-        pollForTile()
-        return
-      }
+    // composer.submit() has the same authority as typing, but it fails closed on its address:
+    // a plugin page is focused, so there is no mounted composer behind `null`. Target the focused
+    // session if one exists, otherwise open a fresh chat in the primary pane and submit there.
+    const accepted = submitToChat(prompt)
+    if (accepted) {
+      setStage('the agent is building it…')
+      pollForTile()
+      return
     }
 
     // No composer on this surface (the web dashboard in a phone browser): write it down.
