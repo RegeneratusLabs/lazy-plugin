@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cat-agent-9'
+const BUILD = 'cat-agent-10'
 
 const KIND_LABEL = {
   command: 'runs a command',
@@ -523,40 +523,50 @@ function CreatorPanel() {
   // which calls lazyplugin_create itself, and the tile appears when it lands.
   function buildWithAgent() {
     const prompt = `Use lazyplugin_create to build a plugin: ${idea.trim()}` +
-      (sourceName ? ` (build it from the ${kind} "${sourceName}")` : '')
+      (sourceName ? ` — build it from the ${kind} "${sourceName}"` : '') +
+      `. If the idea names nothing to fetch, read or run, ask me one question first instead of ` +
+      `building an empty tool.`
     setBusy(true)
     setOut(null)
     setError('')
-    setStage('handing this to the agent…')
-    const send = (typeof window !== 'undefined' && window.hermes && window.hermes.send)
-      ? window.hermes.send.bind(window.hermes)
-      : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
-    if (!send) {
-      // No agent channel from a page: write the request down. The agent picks it up and calls
-      // lazyplugin_create in a real turn, where the provider key resolves.
-      CreatorPanel.__api
-        .request({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
-        .then(payload => {
-          if (!payload || !payload.ok) {
-            fail(((payload && payload.problems) || []).join(' · ') || 'could not hand this to the agent')
-            return
-          }
-          setHandoff(payload.prompt || '')
-          setBusy(false)
-          setStage('')
-          setError('handed to the agent — say “build the plugin I queued” in chat, or it will pick it '
-            + 'up on your next message. Nothing is built until it does.')
-          if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
-        })
-        .catch(err => fail(String(err && err.message ? err.message : err)))
-      return
+    setStage('sending this to the agent…')
+
+    // host.composer.submit() has the same authority as typing: it starts a real turn in the
+    // focused chat, where the host resolves the user's own model and credentials.
+    const composer = host && host.composer
+    if (composer && typeof composer.submit === 'function') {
+      let sent = false
+      try {
+        sent = composer.submit(null, prompt)
+      } catch (err) {
+        sent = false
+      }
+      if (sent) {
+        setStage('the agent is building it…')
+        pollForTile()
+        return
+      }
     }
-    try {
-      send(prompt)
-    } catch (err) {
-      fail(String(err && err.message ? err.message : err))
-      return
-    }
+
+    // No composer on this surface (the web dashboard in a phone browser): write it down.
+    CreatorPanel.__api
+      .request({ idea: idea.trim(), source_kind: sourceName ? kind : '', source_name: sourceName })
+      .then(payload => {
+        if (!payload || !payload.ok) {
+          fail(((payload && payload.problems) || []).join(' · ') || 'could not hand this to the agent')
+          return
+        }
+        setHandoff(payload.prompt || '')
+        setBusy(false)
+        setStage('')
+        setError('queued — this surface has no chat to send into. Say “build the plugin I queued” '
+          + 'in the app, or copy it below.')
+        if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+      })
+      .catch(err => fail(String(err && err.message ? err.message : err)))
+  }
+
+  function pollForTile() {
     let waited = 0
     const tick = () => {
       CreatorPanel.__api
@@ -568,6 +578,7 @@ function CreatorPanel() {
             CreatorPanel.__seen = rows.map(row => row.name)
             setBusy(false)
             setStage('')
+            setError('')
             if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
             return
           }
@@ -580,7 +591,7 @@ function CreatorPanel() {
         })
         .catch(() => setTimeout(tick, 3000))
     }
-    setTimeout(tick, 4000)
+    setTimeout(tick, 5000)
   }
 
   function build() {
@@ -768,19 +779,21 @@ function ChatEdit({ name, prompt, onSaved }) {
   function ask() {
     const request = text.trim()
     if (request.length < 4) return
-    const send = (typeof window !== 'undefined' && window.hermes && window.hermes.send)
-      ? window.hermes.send.bind(window.hermes)
-      : (host && host.hermes && host.hermes.send ? host.hermes.send.bind(host.hermes) : null)
-    if (!send) {
-      setNote('this app build cannot reach the agent — ask in chat instead')
+    const composer = host && host.composer
+    if (!composer || typeof composer.submit !== 'function') {
+      setNote('this surface has no chat — paste the request there instead')
       return
     }
-    send(
+    const sent = composer.submit(null, 
       `Change the generated plugin "${name}" in ~/.hermes/lazy-plugin/created/${name}/. ` +
       `Request: ${request}. Load the lazy-plugin-builder skill, read the files before editing, ` +
       `keep plugin.yaml and __init__.py in step, then run: hermes plugins validate ` +
       `~/.hermes/lazy-plugin/created/${name}`
     )
+    if (!sent) {
+      setNote('nothing is focused in chat — open a chat and try again')
+      return
+    }
     setText('')
     setSent(true)
     setNote('handed to the agent — it will read the bundle, edit it and re-validate')
