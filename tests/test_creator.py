@@ -15,7 +15,8 @@ GOOD = {
     "author": "Josh Thomson",
     "tools": [
         {"name": "check_prices", "description": "Fetch the listing page and filter by threshold.",
-         "kind": "http", "params": {"max_price": "integer price ceiling"}, "behaviour": "GET config.url."},
+         "kind": "http", "params": {"max_price": "integer price ceiling"},
+         "target": "https://api.example.com/prices", "behaviour": "GET the prices endpoint."},
         {"name": "last_run", "description": "Read the last stored result.", "kind": "file",
          "params": {}, "behaviour": "Read config.path."},
     ],
@@ -125,8 +126,9 @@ def test_handlers_return_errors_instead_of_raising(creator, tmp_path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
+    # The template now holds a real URL, so an unset parameter is a network answer, not a raise.
     http_result = module.handle_check_prices({}, {})
-    assert http_result["ok"] is False and "config.url" in http_result["error"]
+    assert http_result["ok"] is False and http_result.get("error")
     file_result = module.handle_last_run({}, {})
     assert file_result["ok"] is False and "config.path" in file_result["error"]
 

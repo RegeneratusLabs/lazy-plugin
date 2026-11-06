@@ -38,6 +38,11 @@ _CORE = _load("core", "core.py")
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
 TOOL_RE = re.compile(r"^[a-z][a-z0-9_]{1,38}[a-z0-9]$")
 KINDS = ("command", "http", "file", "stub")
+
+# A name made only of these says nothing about what the plugin touches: "find-me-me" instead of
+# "ebay-kitty-litter". The request words belong in the description, not the slug.
+_FILLER_WORDS = {"find", "get", "search", "show", "make", "build", "give", "me", "my", "a", "an",
+                 "the", "please", "want", "i", "it", "for", "best", "some", "to"}
 MAX_TOOLS = 5
 
 
@@ -52,8 +57,16 @@ def validate_spec(spec: dict) -> tuple[Optional[dict], list]:
         return None, ["spec is not an object"]
 
     name = _clean(spec.get("name"), 40).lower().replace("_", "-")
+    parts = [p for p in name.split("-") if p]
+    while len(parts) > 1 and parts[0] in _FILLER_WORDS:
+        parts.pop(0)
+    if [p for p in parts if p not in _FILLER_WORDS]:
+        name = "-".join(parts)
     if not NAME_RE.fullmatch(name or ""):
         problems.append(f"name {name!r} must be lowercase-hyphenated, 3-40 chars")
+    elif not [p for p in name.split("-") if p not in _FILLER_WORDS]:
+        problems.append("name must say what the plugin acts on (ebay-kitty-litter), "
+                        "not just the request (find-me-me)")
 
     title = _clean(spec.get("title"), 80) or name.replace("-", " ").title()
     description = _clean(spec.get("description"), 300)
@@ -90,10 +103,34 @@ def validate_spec(spec: dict) -> tuple[Optional[dict], list]:
             if not TOOL_RE.fullmatch(key or ""):
                 continue
             clean_params[key] = _clean(pdesc, 120) or key
+        request_in = raw.get("request")
+        request_in = request_in if isinstance(request_in, dict) else {}
+        clean_request = {
+            "url": _clean(request_in.get("url"), 300),
+            "method": "POST" if str(request_in.get("method") or "GET").upper() == "POST" else "GET",
+            "query": {_clean(k, 40): _clean(v, 120)
+                      for k, v in list((request_in.get("query") or {}).items())[:12]},
+            "defaults": {_clean(k, 40): _clean(v, 120)
+                         for k, v in list((request_in.get("defaults") or {}).items())[:8]},
+            "headers": {_clean(k, 40): _clean(v, 200)
+                        for k, v in list((request_in.get("headers") or {}).items())[:8]},
+            "limit_param": _clean(request_in.get("limit_param"), 30),
+            "items_path": _clean(request_in.get("items_path"), 80),
+            "fields": {_clean(k, 40): _clean(v, 80)
+                       for k, v in list((request_in.get("fields") or {}).items())[:10]},
+        }
+        if kind == "http" and not clean_request["url"]:
+            clean_request["url"] = _clean(raw.get("target"), 300)
+        if kind == "http" and not clean_request["url"]:
+            problems.append(f"{tool_name}: an http tool needs request.url — where does it fetch from?")
+            continue
+        if kind == "http" and not clean_request["items_path"] and not clean_request["fields"]:
+            pass  # a whole-document read is legitimate; no projection is not an error
         tools.append({
             "name": tool_name,
             "description": _clean(raw.get("description"), 200) or tool_name,
             "kind": kind,
+            "request": clean_request,
             "params": clean_params,
             "requires_env": [_clean(e, 60) for e in (raw.get("requires_env") or []) if _clean(e, 60)][:4],
             "behaviour": _clean(raw.get("behaviour"), 300),
@@ -145,20 +182,67 @@ BODIES = {
                 "stdout": proc.stdout[-4000:], "stderr": proc.stderr[-2000:]}}
     except Exception as exc:
         return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}}''',
-    "http": '''    url = config.get("url") or {url_default!r}
-    if not url:
-        return {{"ok": False, "error": "config.url is not set for {tool}"}}
-    headers = dict(config.get("headers") or {{}})
+    "http": '''    base = {url!r}
+    mapping = {query!r}
+    defaults = {defaults!r}
+    limit_param = {limit_param!r}
+    items_path = {items_path!r}
+    fields = {fields!r}
+    method = {method!r}
+
     try:
-        req = urllib.request.Request(url, headers=headers, method=config.get("method", "GET"))
-        with urllib.request.urlopen(req, timeout=30) as response:
-            body = response.read()[:20000].decode("utf-8", "replace")
+        limit = int(params.get(limit_param or "limit") or defaults.get(limit_param or "limit") or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(limit, 50))
+
+    query = {{}}
+    for key, token in mapping.items():
+        value = token
+        if isinstance(token, str) and token.startswith("$") and not token.startswith("$env:"):
+            value = params.get(token[1:])
+            if value in (None, ""):
+                value = defaults.get(token[1:], "")
+        if value in (None, ""):
+            continue
         try:
-            return {{"ok": True, "url": url, "json": json.loads(body)}}
-        except ValueError:
-            return {{"ok": True, "url": url, "text": body}}
+            query[key] = _token(value, config)
+        except ValueError as exc:
+            return {{"ok": False, "error": str(exc)}}
+
+    url = base + ("&" if "?" in base else "?") + urllib.parse.urlencode(query) if query else base
+    headers = {{"Accept": "application/json",
+               "User-Agent": "hermes-plugin/1.0 (+https://hermes-agent.nousresearch.com)"}}
+    for key, token in {headers!r}.items():
+        try:
+            headers[key] = _token(token, config)
+        except ValueError as exc:
+            return {{"ok": False, "error": str(exc)}}
+    headers.update({{k: v for k, v in (config.get("headers") or {{}}).items()}})
+    try:
+        request = urllib.request.Request(url, headers=headers, method=method)
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read()[:400000].decode("utf-8", "replace")
     except Exception as exc:
-        return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}}''',
+        return {{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}", "url": url}}
+
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        return {{"ok": True, "url": url, "text": raw[:4000]}}
+
+    items = payload
+    for part in [p for p in items_path.split(".") if p]:
+        if isinstance(items, dict):
+            items = items.get(part)
+        else:
+            break
+    if fields and isinstance(items, list):
+        items = [{{label: _dig(row, path) for label, path in fields.items()}} for row in items[:limit]]
+    elif isinstance(items, list):
+        items = items[:limit]
+    return {{"ok": True, "url": url, "count": len(items) if isinstance(items, list) else 1,
+            "items": items}}''',
     "file": '''    path = config.get("path") or {path_default!r}
     if not path:
         return {{"ok": False, "error": "config.path is not set for {tool}"}}
@@ -210,24 +294,60 @@ def render(spec: dict) -> dict:
     if needs_subprocess:
         imports.append("import subprocess")
     if needs_urllib:
+        imports.append("import re")
+        imports.append("import urllib.parse")
         imports.append("import urllib.request")
 
     handlers, entries = [], []
     for tool in tools:
         func = "handle_" + tool["name"]
         kind = tool["kind"]
+        request = tool.get("request") or {}
         body = BODIES[kind].format(
             tool=tool["name"], description=tool["description"],
             behaviour=tool["behaviour"] or "Scaffold: replace with the real implementation.",
             behaviour_short=(tool["behaviour"] or "Replace with the real implementation.")[:200],
             url_default=("" if kind != "http" else ""),
             path_default=("" if kind != "file" else ""),
+            url=request.get("url", ""),
+            query=request.get("query") or {},
+            defaults=request.get("defaults") or {},
+            limit_param=request.get("limit_param") or "",
+            items_path=request.get("items_path") or "",
+            fields=request.get("fields") or {},
+            method=request.get("method") or "GET",
+            headers=request.get("headers") or {},
         )
         handlers.append(HANDLER.format(func=func, description=tool["description"],
                                        behaviour=tool["behaviour"] or "Scaffold.",
                                        body=body))
         entries.append(f'    "{tool["name"]}": {func},')
 
+    dig_helper = chr(10).join([
+        "",
+        "",
+        "def _dig(obj, path):",
+        "    # Follow a dotted path through dicts and lists; None when the path is not there.",
+        "    for part in [p for p in str(path or \"\").split(\".\") if p]:",
+        "        if isinstance(obj, dict):",
+        "            obj = obj.get(part)",
+        "        elif isinstance(obj, list) and part.isdigit() and int(part) < len(obj):",
+        "            obj = obj[int(part)]",
+        "        else:",
+        "            return None",
+        "    return obj",
+        "",
+        "",
+        "def _token(value, config):",
+        "    # Replace $env:NAME anywhere in a value; a missing variable is a named error, not a 401.",
+        "    def sub(match):",
+        "        name = match.group(1)",
+        "        found = os.environ.get(name) or config.get(name)",
+        "        if not found:",
+        "            raise ValueError(name + \" is not set — put it in ~/.hermes/.env\")",
+        "        return str(found)",
+        "    return re.sub(r'\\$env:([A-Za-z_][A-Za-z0-9_]*)', sub, str(value))",
+    ]) if needs_urllib else ""
     params_hint = {t["name"]: t["params"] for t in tools if t["params"]}
     handler_block = chr(10).join(handlers)
     description_block = chr(10).join(f'    {t["name"]!r}: {t["description"]!r},' for t in tools)
@@ -241,6 +361,7 @@ Generated by Lazy Plugin from a described idea. Handler bodies are templates cho
 """
 
 {chr(10).join(imports)}
+{dig_helper}
 
 PLUGIN = {{
     "name": {name!r},
@@ -356,6 +477,20 @@ SPEC_SCHEMA = {
                     "behaviour": {"type": "string"},
                     "params": {"type": "object"},
                     "requires_env": {"type": "array", "items": {"type": "string"}},
+                    "target": {"type": "string"},
+                    "request": {
+                        "type": "object",
+                        "properties": {
+                            "url": {"type": "string"},
+                            "method": {"type": "string", "enum": ["GET", "POST"]},
+                            "query": {"type": "object"},
+                            "defaults": {"type": "object"},
+                            "headers": {"type": "object"},
+                            "limit_param": {"type": "string"},
+                            "items_path": {"type": "string"},
+                            "fields": {"type": "object"},
+                        },
+                    },
                 },
                 "required": ["name", "description", "kind"],
             },
@@ -376,7 +511,19 @@ Return ONE JSON object with this shape:
 Rules that decide whether this plugin is usable:
 - 1 to 5 tools. Each tool does one job.
 - kind=command when the job runs a binary (argv from config, never a shell string).
-- kind=http when the job fetches or posts a URL.
+- kind=http when the job fetches or posts a URL, and then `request` is the whole point:
+  {"request": {"url": "https://api.example.com/v1/search",
+               "query": {"q": "$query", "key": "$env:EXAMPLE_API_KEY", "limit": "$limit"},
+               "defaults": {"query": "what the user asked for", "limit": "10"},
+               "headers": {"Authorization": "Bearer $env:EXAMPLE_API_KEY"},
+               "limit_param": "limit",
+               "items_path": "results",
+               "fields": {"title": "name", "url": "links.self", "price": "price.value"}}}
+  `$name` reads that tool parameter (falling back to `defaults`); `$env:NAME` reads an env var and
+  must also be listed in requires_env; `items_path` is the dotted path to the result list;
+  `fields` maps your output label to the dotted path inside each result. An http tool with no
+  request.url is refused, because a tool that fetches nothing is not a plugin.
+- "target" is a shorthand for request.url when there is exactly one.
 - kind=file when the job reads or writes a path.
 - kind=stub ONLY when the job needs real logic that templates cannot express; then `behaviour`
   must describe exactly what a developer should write.
@@ -541,6 +688,8 @@ def spec_from_answers(answers: dict) -> dict:
             "description": f"{purpose}" + (f" Returns {returns}." if returns else ""),
             "kind": kind,
             "behaviour": (f"Uses {target}. " if target else "") + (returns or ""),
+            "target": target,
+            **({"request": {"url": target}} if kind == "http" and target else {}),
             "params": params,
             **({"requires_env": [secret]} if secret else {}),
         }],

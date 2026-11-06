@@ -11,7 +11,8 @@ SPEC_TEXT = """{"name": "gpu-price-watch", "title": "GPU Price Watch",
  "description": "Watch GPU listing pages for prices under a threshold and report matches.",
  "category": "tools", "hooks": ["on_session_end"],
  "tools": [{"name": "check_prices", "description": "Fetch the listing page and filter.",
-            "kind": "http", "params": {"max_price": "price ceiling"}, "behaviour": "GET config.url"}]}"""
+            "kind": "http", "params": {"max_price": "price ceiling"},
+             "target": "https://api.example.com/prices", "behaviour": "GET the prices endpoint"}]}"""
 
 
 class Result:
