@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-7'
+const BUILD = 'cradle-8'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -311,7 +311,10 @@ async function submitToChat(prompt) {
   // one. Holding both is what lets us submit and then actually show the turn.
   const stored = created.stored_session_id || created.session_id
   try {
-    await request('prompt.submit', { profile, session_id: sessionId, text: prompt, source: 'desktop' })
+    // Exactly the contract's fields: PromptSubmitParams is session_id + profile + text (+ truncation
+    // and voice extras). `source` is not one of them — it belongs to session.create — and the schema
+    // rejects unknown keys outright, so an invented field reads as a version mismatch.
+    await request('prompt.submit', { profile, session_id: sessionId, text: prompt })
   } catch (err) {
     return { ok: false, stage: 'prompt.submit failed: ' + String(err && err.message ? err.message : err) }
   }

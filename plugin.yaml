@@ -1,5 +1,5 @@
 name: lazy-plugin
-version: 0.3.1
+version: 0.3.2
 description: >-
   Plugin creator. Describe a plugin in a sentence, or pick a skill the agent wrote or a cron job
   you already run, and it builds one: the model writes a spec (name, 1-5 tools, handler kinds,
