@@ -752,8 +752,8 @@ async def create_plugin(payload: dict | None = None):
                              "problems": ["describe the plugin, or pick a skill or cron job"]},
                             status_code=400)
     job = uuid.uuid4().hex[:12]
-    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
-                 "started": time.time()}
+    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "stage_started": time.time(),
+                 "result": None, "error": None, "started": time.time()}
     _start_job_thread(_run_create, job, idea, kind, source)
     return {"ok": True, "job": job, "stage": "starting"}
 
@@ -778,25 +778,46 @@ def _run_create(job: str, idea: str, kind: str, source: str) -> None:
     _scope_mod().run_in_scope(_create_worker, JOBS[job], idea, kind, source)
 
 
+def _stage(entry: dict, stage: str) -> None:
+    """Name the phase and stamp when it began: the page reads both to show real progress.
+
+    One model call is one blocking await inside the worker, so a stage that never changes is
+    information, not a stall — the page can say 'asking the model · 43s' and mean it.
+    """
+    entry["stage"] = stage
+    entry["stage_started"] = time.time()
+
+
 def _create_worker(entry: dict, idea: str, kind: str, source: str) -> None:
+    started = time.time()
+    timings: dict[str, float] = {}
     try:
-        entry["stage"] = "reading what you picked"
+        _stage(entry, "reading what you picked")
+        at = time.time()
         context = _source_context(kind, source)
+        timings["source"] = round(time.time() - at, 2)
         ctx, meta = _find_ctx()
         llm = getattr(ctx, "llm", None) if ctx is not None else None
         creator = _creator_mod()
-        entry["stage"] = "asking the model for a spec"
+        _stage(entry, "asking the model for a spec")
         if _scope_mod().secret_probe() is False:
             entry.update(ok=False, stage="failed", error=_KEY_UNREADABLE)
             return
+        at = time.time()
         drafted = creator.draft_spec(idea, llm, context)
+        timings["model"] = round(time.time() - at, 2)
         if not drafted.get("ok"):
             drafted["ctx"] = meta
+            drafted["timings"] = timings
             entry.update(ok=False, stage="refused", result=drafted,
                          error=" ".join(drafted.get("problems") or []) or "the model gave no usable spec")
             return
-        entry["stage"] = "writing the files and validating"
+        _stage(entry, "writing the files and validating")
+        at = time.time()
         written = creator.create(drafted["spec"])
+        timings["files"] = round(time.time() - at, 2)
+        timings["total"] = round(time.time() - started, 2)
+        written["timings"] = timings
         written["draft"] = {"stage": drafted.get("stage"), "meta": drafted.get("meta")}
         written["source"] = {"kind": kind, "name": source, "chars": len(context)}
         entry.update(ok=bool(written.get("ok")), stage="done", result=written,

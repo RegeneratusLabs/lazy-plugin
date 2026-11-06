@@ -51,6 +51,29 @@ in `plugin.yaml` that `__init__.py` does not register fails capability matching 
 After any edit: re-run the validator, then `git -C <bundle> commit` so the next publish pins the
 change.
 
+## Template traps that validate but don't run
+
+The generated bodies are stubs keyed to params the spec rarely declares. Read `__init__.py`
+before reporting a build, and check these every time:
+
+- **`file` tools must declare a param named literally `path`** (or a fixed `target`). Otherwise the
+  spec is refused at the spec stage, before the validator even runs.
+- **The `file` template writes only when passed `write` and `content`.** Neither is a declared
+  param, so a freshly generated tool silently falls through to *reading* the target and dies with
+  `FileNotFoundError`. Rewrite the body to use the params you actually declared.
+- **The `http` template hardcodes the URL as a literal** (`base = '$site_url'`) and leaves `mapping`
+  empty, so no caller param ever reaches the request. Build the URL from params.
+- **`smoke.py` samples params by exact name.** `url` → `https://example.com`, `path` →
+  `~/smoke.txt`, `query`/`q`/`text` → `cat`; anything unrecognised gets the junk string `test`.
+  Name a fetch param `url` (keep a descriptive alias) or the smoke run always reports broken.
+- **`ok:false` is classified `broken`**, not a warning. A handler that refuses a junk input the
+  smoke host invented fails the gate — validate only what you can genuinely check, write the rest
+  verbatim with a `warning` field.
+
+`hermes plugins validate` passing does not mean the tools work: it checks the spec, the manifest and
+registration, not behaviour. The smoke verdict is the real signal — re-run it from the repo with
+`python3 -c "import smoke; smoke.smoke(Path(bundle))"`.
+
 ## What not to do
 
 - Do not add a `requirements.txt` for something the stdlib already does.

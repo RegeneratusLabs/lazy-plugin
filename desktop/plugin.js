@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-4'
+const BUILD = 'cradle-5'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -74,6 +74,13 @@ const CC_STYLE = `
 .cc-btn:disabled { opacity: .38; cursor: default; }
 .cc-btn.pri { color: ${CC.accent}; border-color: ${CC.accent}; }
 .cc-btn.pri:hover:not(:disabled) { color: ${CC.paper}; background: ${CC.panel2}; }
+.cc-build-status { display: inline-flex; align-items: center; gap: 6px; font-family: ${CC.mono};
+  font-size: .62rem; color: ${CC.paper}; }
+@keyframes cc-pulse { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+.cc-dot { width: 5px; height: 5px; border-radius: 50%; background: ${CC.paper};
+  animation: cc-pulse 1.3s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cc-dot { animation: none; opacity: .8; } }
+.cc-build-hint { font-family: ${CC.mono}; font-size: .56rem; color: ${CC.muted}; }
 
 .cc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 760px) { .cc-tiles { grid-template-columns: minmax(0, 1fr); } }
@@ -200,7 +207,11 @@ function makeApi(ctx) {
         ? JSON.stringify(request.body)
         : request.body
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status} · ${label(path, request)}`)
+    if (!response.ok) {
+      let said = ''
+      try { said = (await response.text()).slice(0, 160).replace(/\s+/g, ' ') } catch (err) { said = '' }
+      throw new Error(`HTTP ${response.status} · ${label(path, request)}${said ? ` · ${said}` : ''}`)
+    }
     return response.json()
   }
 
@@ -377,6 +388,12 @@ function TileButton({ onClick, disabled, primary, title, children }) {
   })
 }
 
+function secs(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) return '—'
+  return number >= 10 ? `${Math.round(number)}s` : `${number.toFixed(1)}s`
+}
+
 function LedgerRow({ label, mark, tone, value, sub }) {
   return jsxs('div', {
     className: 'cc-row',
@@ -539,7 +556,27 @@ function Ledger({ out }) {
             mark: dispatchOk ? '✓' : '✗',
             tone: dispatchOk ? '' : (verdict.key === 'unchecked' ? 'warn' : 'fail'),
             value: dispatchLine
-          }, 'dispatch')
+          }, 'dispatch'),
+          out.timings
+            ? jsx(LedgerRow, {
+                label: 'timing',
+                mark: '·',
+                tone: '',
+                value: `model ${secs(out.timings.model)} · files ${secs(out.timings.files)} · ` +
+                  `total ${secs(out.timings.total)}`,
+                sub: [
+                  out.timings.source ? `reading the source took ${secs(out.timings.source)}` : '',
+                  out.draft && out.draft.meta && out.draft.meta.lane
+                    ? `the spec came back on the ${out.draft.meta.lane} lane in ` +
+                      `${secs(out.draft.meta.seconds)}`
+                    : '',
+                  out.draft && out.draft.meta && out.draft.meta.structured_error
+                    ? `structured lane failed first, ${secs(out.draft.meta.structured_seconds)}: ` +
+                      out.draft.meta.structured_error
+                    : ''
+                ].filter(Boolean)
+              }, 'timing')
+            : null
         ]
       }),
       jsxs('div', {
@@ -690,6 +727,7 @@ function CreatorPanel() {
   const [prefill, setPrefill] = useState(null)
   const [handoff, setHandoff] = useState('')
   const [elapsed, setElapsed] = useState(0)
+  const [stageAt, setStageAt] = useState(0)
   const [latch, setLatch] = useState(CreatorPanel.__building)
 
   // A build outlives the click and the page: it is a thread on the backend. Without a module-level
@@ -702,10 +740,13 @@ function CreatorPanel() {
       setElapsed(0)
       return
     }
-    const started = Date.now()
-    const tick = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000)
+    // Count from the phase's own start, not the click: "writing the files · 3s" after 40s of model
+    // is honest, and a stale clock would read as a hang.
+    const started = stageAt ? stageAt * 1000 : Date.now()
+    const tick = setInterval(
+      () => setElapsed(Math.max(0, Math.round((Date.now() - started) / 1000))), 500)
     return () => clearInterval(tick)
-  }, [busy])
+  }, [busy, stageAt])
 
   useEffect(() => {
     let live = true
@@ -742,7 +783,9 @@ function CreatorPanel() {
       fail('the build finished but its result expired — check Built so far')
       return
     }
+    if (state.stage) setStageAt(Number(state.stage_started) || 0)
     if (state.stage && STAGE_TEXT[state.stage]) setStage(STAGE_TEXT[state.stage])
+    if (state.stage && !STAGE_TEXT[state.stage] && state.stage !== 'starting') setStage(state.stage)
     if (state.ok === null || state.ok === undefined) return false
     setBusy(false)
     setStage('')
@@ -946,10 +989,21 @@ function CreatorPanel() {
           sourceName
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
-          busy && stage
+          busy
+            ? jsxs('span', {
+                className: 'cc-build-status',
+                children: [
+                  jsx('span', { className: 'cc-dot' }),
+                  jsx('span', {
+                    children: `${stage || 'starting…'}${elapsed ? ` · ${elapsed}s` : ''}`
+                  })
+                ]
+              })
+            : null,
+          busy
             ? jsx('span', {
-                className: 'cc-note',
-                children: `${stage}${elapsed ? ` · ${elapsed}s` : ''}`
+                className: 'cc-build-hint',
+                children: 'one model call, no streaming — a slow spec is the model thinking'
               })
             : null,
           latch && !busy

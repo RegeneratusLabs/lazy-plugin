@@ -20,6 +20,7 @@ import importlib.util
 import json
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -727,6 +728,7 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
     payload = idea if not context else f"{idea}\n\nContext from the user's own setup:\n{context[:6000]}"
     meta = {"lane": None, "model": None, "tokens": None}
     raw = ""
+    attempt_at = time.time()
     try:
         result = llm.complete_structured(
             instructions=DRAFT_INSTRUCTIONS,
@@ -741,9 +743,14 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
         raw = getattr(result, "text", "") or ""
         parsed = getattr(result, "parsed", None) or _extract_json(raw)
         meta.update(lane="structured", model=getattr(result, "model", None),
-                    tokens=getattr(getattr(result, "usage", None), "total_tokens", None))
+                    tokens=getattr(getattr(result, "usage", None), "total_tokens", None),
+                    seconds=round(time.time() - attempt_at, 2))
     except Exception as first:
+        # How long the structured lane burned before failing is the difference between a 20-second
+        # build and a three-minute one, so it is recorded rather than swallowed.
         meta["structured_error"] = f"{type(first).__name__}: {first}"[:300]
+        meta["structured_seconds"] = round(time.time() - attempt_at, 2)
+        attempt_at = time.time()
         try:
             result = llm.complete(
                 messages=[{"role": "system",
@@ -755,7 +762,8 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
             raw = getattr(result, "text", "") or ""
             parsed = _extract_json(raw)
             meta.update(lane="chat", model=getattr(result, "model", None),
-                        tokens=getattr(getattr(result, "usage", None), "total_tokens", None))
+                        tokens=getattr(getattr(result, "usage", None), "total_tokens", None),
+                        seconds=round(time.time() - attempt_at, 2))
         except Exception as second:
             return {"ok": False, "stage": "llm",
                     "problems": [f"model call failed: {type(second).__name__}: {second}"[:300]]}
