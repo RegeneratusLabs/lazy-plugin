@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import importlib.util
 import datetime
+import re
 import inspect
 import json
 import os
@@ -269,6 +270,26 @@ def _agent_home() -> Path:
     return Path.home() / ".hermes" / "hermes-agent"
 
 
+def _declared_env(bundle: Path) -> list:
+    """The env var names this plugin's own manifest asks for. Nothing else is passed through."""
+    try:
+        text = (Path(bundle) / "plugin.yaml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    names, in_block = [], False
+    for line in text.splitlines():
+        if re.match(r"^requires_env\s*:", line):
+            in_block = True
+            continue
+        if in_block:
+            found = re.match(r"^\s*-\s*([A-Z][A-Z0-9_]*)\s*$", line)
+            if found:
+                names.append(found.group(1))
+            elif line.strip():
+                in_block = False
+    return names
+
+
 def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
     """Dispatch one tool in a throwaway HERMES_HOME, so nothing installed elsewhere can answer."""
     agent = _agent_home()
@@ -283,8 +304,14 @@ def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
         # Discovery only loads what plugins.enabled allows; a fresh home enables nothing.
         (Path(home) / "config.yaml").write_text(
             "plugins:\n  enabled:\n    - " + bundle.name + "\n", encoding="utf-8")
-        env = {**os.environ, "HERMES_HOME": home, "PYTHONUNBUFFERED": "1",
-               "PYTHONPATH": str(agent)}
+        # Generated code runs in here. It gets the variables it declared and nothing else — not the
+        # gateway's provider keys, not its GitHub token.
+        keep = {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TERM"}
+        env = {name: os.environ[name] for name in keep if name in os.environ}
+        env.update({"HERMES_HOME": home, "PYTHONUNBUFFERED": "1", "PYTHONPATH": str(agent)})
+        for name in _declared_env(bundle):
+            if name in os.environ:
+                env[name] = os.environ[name]
         try:
             proc = subprocess.run([_interpreter(), "-c", DISPATCH, tool, json.dumps(params)],
                                   capture_output=True, text=True, timeout=timeout,

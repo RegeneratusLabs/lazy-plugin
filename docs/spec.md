@@ -32,7 +32,7 @@ receipt: plan · files · check · try-out   →  install / publish
 
 Two properties hold the design together:
 
-1. **The model authors intent, never code.** It returns a spec: a name, 1–3 tools, and for each tool
+1. **The model authors intent, never code.** It returns a spec: a name, 1–5 tools, and for each tool
    what it reads or fetches, what it returns, whether it needs a key. Fixed templates render that
    into `plugin.yaml`, `__init__.py`, `README.md` and a skill. Generated code therefore always
    registers, always declares what it provides, and cannot carry injected logic.
@@ -56,16 +56,15 @@ that passes one means it.
 
 Nothing is written until the spec passes; nothing is offered for install until it runs.
 
-1. `validate_spec` — name, description length, 1–3 tools, unique snake_case tool names, real targets.
+1. `validate_spec` — name, description length, 1–5 tools, unique snake_case tool names, real targets.
 2. `render` — pure function, spec to files. No I/O.
 3. `hermes plugins validate` — the catalog gate as a subprocess, its exact output kept.
 4. `contract_violations` — one positional `params`, `**kwargs`, a `json.dumps` return. A bundle that
    misses the handler contract is deleted rather than left on the shelf looking fine.
 5. `dispatch` — every tool called once through the real registry with sample arguments.
-6. `similar_plugins` — the finished plugin against the live catalog, twice: on the idea before a
-   build (a collision turns `make it` into a two-click verb) and on the receipt before publish
-   (`similar`/`duplicate` turns `publish` into a two-click verb). Anchored on tool names and rare
-   name tokens only; prose overlap can nudge a score but never qualify a match.
+6. `secrets` — on publish only: every file the commit would stage is read, and a credential-shaped
+   string stops the push before any remote exists. A plugin built for one profile is nobody's
+   business but its owner's; a public repo is permanent.
 
 ## Verdict vocabulary
 
@@ -112,13 +111,25 @@ manifest does not declare.
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest tests -q     # 133 passed
+python3 -m pytest tests -q     # 107 passed
 hermes plugins validate .               # manifest, capabilities, security scan, no core override
 ```
 
 The tripwires worth keeping: a spec with a dead target is refused rather than shipped, a handler that
 needs a `config` argument is refused, and a bundle that validates but cannot dispatch is graded
 `broken` instead of passing quietly.
+
+## The two side doors
+
+The page is the product, but the router also serves two reports that answer "what else is worth
+sharing from this profile":
+
+- `GET /contributions` — agent-written skills scored for whether they are worth publishing, with
+  personal strings (paths, hosts, identities, accounts) named before anything is packaged.
+- `GET /readiness` — installed plugins checked against the catalog's admission rules, so a submission
+  is measured against the same list a maintainer will use.
+
+Neither writes anything without an explicit request, and neither is on the page's main path.
 
 ## Credits
 

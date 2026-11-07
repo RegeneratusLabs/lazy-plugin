@@ -17,9 +17,6 @@ from typing import Any, Dict, List, Optional
 CATALOG_URL = "https://nousresearch.github.io/hermes-agent/docs/api/plugin-catalog.json"
 CATALOG_TTL_HOURS = 24
 FETCH_TIMEOUT = 5.0
-GAP_RETENTION_DAYS = 30
-GAP_MAX_ROWS = 5000
-
 # ---------------------------------------------------------------- paths
 
 
@@ -41,40 +38,6 @@ def skills_dir() -> Path:
 # ---------------------------------------------------------------- catalog
 
 #: Tokens that are never identity evidence: shells, common binaries, generic English.
-BLOCKED = set("""python python3 node npm npx pip pip3 uv cargo go git curl wget bash sh zsh
-find grep sed awk jq tar zip unzip ssh scp rsync docker podman make cmake ffmpeg ffprobe ls cd cat
-echo printf chmod chown mkdir rm cp mv touch head tail sort uniq wc xargs tee kill ps top df du
-open code vim nano brew apt apt-get dnf yum pacman systemctl service launchctl pandoc sqlite3 psql
-mysql openssl gpg hermes sudo env export source test true false sleep date which file stat ln
-basename mktemp realpath osascript powershell cmd pwsh yarn pnpm bun deno php ruby perl java
-gradle mvn dotnet swift xcodebuild adb fastboot tmux screen watch nohup timeout ip ifconfig
-nmap nc socat dig nslookup ping traceroute crontab at journalctl dmesg lsof
-skills skill token cost data health context self session provider business terminal length mock
-diff drag debug free image images video audio music sound text read write event events feed mode
-plan user users audit cron auth node nodes kernel series rooms alert alerts owners owner workers
-worker repl ingest adapter submit billing companion wake diagnose optimize rates rate holdings
-purchase posture broker graphics ascii github gitlab git google microsoft amazon aws azure
-cloudflare openai anthropic claude gpt news best tool tools suite platform engine runner helper
-utils utility generic common core base main app apps web net api service services system systems
-files document docs playlist playlists library content source sources search query index store
-cache queue task tasks jobs work flow flows step steps guide setup install update produce output
-""".split())
-
-HOST_NOISE = {
-    "www", "api", "app", "docs", "cdn", "static", "help", "support", "auth", "login", "portal",
-    "admin", "dashboard", "raw", "objects", "user-images", "github", "gitlab", "google", "amazon",
-}
-
-
-def _clean_key(key: str) -> Optional[str]:
-    k = (key or "").strip().lower()
-    if len(k) < 5 or k in BLOCKED or k.isdigit():
-        return None
-    if not re.fullmatch(r"[a-z0-9][a-z0-9._+-]*", k):
-        return None
-    return k
-
-
 def _parse_entries(payload: Any) -> List[dict]:
     if isinstance(payload, dict):
         entries = payload.get("entries")
@@ -165,16 +128,6 @@ def load_catalog(force: bool = False) -> dict:
 
 # Words that carry no identity. Short connectors, plus the vocabulary every plugin description uses,
 # so "search" and "report" cannot make two unrelated plugins look like one.
-_STOP = set("""a an the and or of for to in on with from by as at is are be it its this that these those
-you your we our they them their i me my can will would should could may might must do does did done
-plugin plugins hermes agent agents tool tools build builds builder make makes made get gets got fetch
-fetches return returns returned result results data api call calls called use uses used using into
-over under more most less least new old one two three first last next best top also just only very
-search searches find finds finding look looks list lists show shows give gives given take takes
-from about across between during before after while when where which who whom what how why all any
-each every some such than then there here not no yes""".split())
-
-
 # ---------------------------------------------------------------- skills
 
 _FRONTMATTER = re.compile(r"^---\n(.*?)\n---", re.S)
@@ -251,16 +204,6 @@ def scan_skills(root: Optional[Path] = None) -> List[dict]:
 
 
 # ---------------------------------------------------------------- identifiers
-
-_PKG_PATTERNS = (
-    r"pip3?\s+install\s+(?:-U\s+)?(?:-e\s+)?([A-Za-z0-9_.\-]+)",
-    r"npm\s+i(?:nstall)?\s+(?:-g\s+)?([@A-Za-z0-9_./\-]+)",
-    r"brew\s+install\s+([A-Za-z0-9_./\-]+)",
-    r"(?:apt|apt-get|dnf)\s+install\s+(?:-y\s+)?([A-Za-z0-9_.\-]+)",
-    r"uv\s+(?:pip\s+)?(?:add|install|tool\s+install)\s+([A-Za-z0-9_.\-]+)",
-    r"cargo\s+install\s+([A-Za-z0-9_.\-]+)",
-)
-
 
 # ---------------------------------------------------------------- gap ledger
 

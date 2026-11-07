@@ -33,16 +33,5 @@ def core(monkeypatch, tmp_path):
 
 
 @pytest.fixture()
-def hooks(monkeypatch, tmp_path):
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    monkeypatch.setenv("LAZY_PLUGIN_SKILLS_DIR", str(SKILLS))
-    spec = importlib.util.spec_from_file_location(f"lazyplugin_hooks_{id(tmp_path)}", ROOT / "hooks.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    mod.core.CATALOG_URL = CATALOG_JSON.as_uri()
-    return mod
-
-
-@pytest.fixture()
 def catalog():
     return json.loads(CATALOG_JSON.read_text())

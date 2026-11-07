@@ -23,9 +23,9 @@ name, the validate line and the dispatch line, and let the verdict speak.
    what it returns, and whether it needs a key. Show the spec to the user before writing files if
    anything is ambiguous.
 2. **Render, don't freehand.** Handler bodies come from four shapes only:
-   - `command` — argv list from `config.argv`, never a shell string
-   - `http` — `urlopen` of `config.url`, JSON parsed when possible
-   - `file` — pathlib read/write of `config.path`
+   - `command` — the spec's argv as a list, never a shell string
+   - `http` — `urlopen` of the spec's URL, JSON parsed when possible
+   - `file` — pathlib read/write of the spec's path
    - `stub` — raises `NotImplementedError` carrying the described behaviour
    The model writes the *spec*; the templates write the code. Hand-written Python for the body is
    how a plugin reaches the user broken.
@@ -74,7 +74,7 @@ before reporting a build, and check these every time:
 
 `hermes plugins validate` passing does not mean the tools work: it checks the spec, the manifest and
 registration, not behaviour. The smoke verdict is the real signal — re-run it from the repo with
-`python3 -c "import smoke; smoke.smoke(Path(bundle))"`.
+`python3 -c "import smoke; from pathlib import Path; smoke.smoke(Path(bundle))"`.
 
 ## What not to do
 

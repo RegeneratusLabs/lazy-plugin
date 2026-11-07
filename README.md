@@ -25,7 +25,7 @@ you install it.
 
 ```
 page ──▶ a real chat turn, in the chat pane (you watch it happen)
-          └─▶ spec in words: name, 1–3 tools, what each reads/fetches, what it returns
+          └─▶ spec in words: name, 1–5 tools, what each reads/fetches, what it returns
               └─▶ lazyplugin_create ─▶ fixed templates write the code
                   └─▶ hermes plugins validate ─▶ the exact ✗ line if it fails
                       └─▶ every tool dispatched once ─▶ works · needs a key · blocked upstream · half-built · broken
@@ -38,9 +38,9 @@ always registers, declares exactly the capabilities it provides, and cannot carr
 
 Handler bodies are limited to four shapes:
 
-- `command` — runs a binary from `config.argv` (list argv, never a shell string)
-- `http` — GET/POST a URL, with a declared `url` parameter winning over the baked default
-- `file` — read/write a path from `config.path` or a declared `path` argument
+- `command` — runs the spec's argv as a list, never a shell string
+- `http` — GET/POST the spec's URL, with a declared `url` parameter winning over it
+- `file` — read/write the spec's path, or a declared `path` argument
 - `stub` — raises `NotImplementedError` carrying the described behaviour
 
 A spec that cannot work is refused **before any file is written**: name shape, description length,
@@ -93,8 +93,8 @@ still decides; nothing here merges anything.
 
 `lazyplugin_create` is an ordinary tool, so it runs inside a turn and the host resolves whatever model
 and credential that profile has — API key, OAuth proxy, cloud or local. The plugin holds no key, names
-no provider, and shells out to nothing. Install it on any profile and the agent already knows how to
-build plugins.
+no provider, and makes no model call of its own: the agent that runs the build is yours, on your
+profile. Install it anywhere and the agent already knows how to build plugins.
 
 ## Tools
 
@@ -108,13 +108,13 @@ build plugins.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest fastapi httpx
-.venv/bin/python -m pytest tests -q          # 133 passed
+.venv/bin/python -m pytest tests -q          # 107 passed
 hermes plugins validate .                    # every catalog gate
 ```
 
 ## Limits, honestly
 
-- Three handler shapes cover most small tools. Anything needing real state, retries or pagination
+- The four handler shapes cover most small tools. Anything needing real state, retries or pagination
   wants a hand-written plugin, and the spec validator will refuse shapes it cannot render safely.
 - The try-out uses sample arguments (`date` → today, `domain` → example.com). A tool that needs a
   specific id will come back broken even if the code is fine — the receipt says why.

@@ -30,44 +30,6 @@ def _load_sibling(name: str, filename: str):
     return mod
 
 
-def handle_contributions(params: Optional[dict] = None, **kwargs: Any) -> str:
-    """Screening needs no model; packaging writes only inside the plugin's own outbox."""
-    params = params or {}
-    try:
-        days = max(1, min(3650, int(params.get("days") or 60)))
-        limit = max(1, min(50, int(params.get("limit") or 12)))
-    except (TypeError, ValueError):
-        days, limit = 60, 12
-    try:
-        contrib = _load_sibling("skills_contrib", "skills_contrib.py")
-        contrib._CORE = core
-        name = str(params.get("package_name") or "").strip()
-        if not name and str(params.get("mode") or "") == "submit-all":
-            return json.dumps(contrib.submit_all(days=days, limit=limit))
-        if name:
-            mode = str(params.get("mode") or "")
-            if mode == "submit":
-                return json.dumps(contrib.submit(name, days=days))
-            return json.dumps(contrib.package(name, days=days))
-        return json.dumps(contrib.run(days=days, limit=limit))
-    except Exception as exc:
-        return _err(exc, "skill screening failed; nothing was written")
-
-
-def handle_readiness(params: Optional[dict] = None, **kwargs: Any) -> str:
-    """Facts about submittability; nothing is ranked and nothing is pushed."""
-    params = params or {}
-    try:
-        mod = _load_sibling("readiness", "readiness.py")
-        mod._CORE = core
-        name = str(params.get("prepare") or "").strip()
-        if name:
-            return json.dumps(mod.prepare(name, deep=params.get("deep", True) is not False))
-        return json.dumps(mod.audit(deep=params.get("deep", True) is not False))
-    except Exception as exc:
-        return _err(exc, "readiness audit failed; nothing was written")
-
-
 def _creator():
     mod = _load_sibling("creator", "creator.py")
     mod._CORE = core

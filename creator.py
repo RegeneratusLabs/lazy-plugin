@@ -183,10 +183,7 @@ provides_tools:{tools}
 HANDLER = '''
 
 def {func}(params: dict, **kwargs: Any) -> str:
-    """{description}
-
-    {behaviour}
-    """
+    {doc}
 {body}
 '''
 
@@ -281,9 +278,7 @@ BODIES = {
                           ensure_ascii=False)
     except Exception as exc:
         return json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}})''',
-    "stub": '''    raise NotImplementedError(
-        "This tool is a scaffold. {behaviour_short}"
-    )''',
+    "stub": '''    raise NotImplementedError({behaviour_message})''',
 }
 
 
@@ -330,7 +325,8 @@ def render(spec: dict) -> dict:
         body = BODIES[kind].format(
             tool=tool["name"], description=tool["description"],
             behaviour=tool["behaviour"] or "Scaffold: replace with the real implementation.",
-            behaviour_short=(tool["behaviour"] or "Replace with the real implementation.")[:200],
+            behaviour_message=repr("This tool is a scaffold. "
+                                   + (tool["behaviour"] or "Replace with the real implementation.")[:200]),
             url_default=("" if kind != "http" else ""),
             path_default=(tool.get("target") or ""),
             argv=[p for p in str(tool.get("target") or "").split()][:8],
@@ -343,9 +339,8 @@ def render(spec: dict) -> dict:
             method=request.get("method") or "GET",
             headers=request.get("headers") or {},
         )
-        handlers.append(HANDLER.format(func=func, description=tool["description"],
-                                       behaviour=tool["behaviour"] or "Scaffold.",
-                                       body=body))
+        doc = f"{tool['description']}\n\n{tool['behaviour'] or 'Scaffold.'}"
+        handlers.append(HANDLER.format(func=func, doc=repr(doc), body=body))
         entries.append(f'    "{tool["name"]}": {func},')
 
     dig_helper = chr(10).join([

@@ -98,8 +98,17 @@ def create_repo(bundle: Path, owner: str, name: str, description: str,
         return {"created": True, "repo": full,
                 "url": run(["gh", "repo", "view", full, "--json", "url", "-q", ".url"])}
     branch = run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=bundle) or "main"
-    if run(["git", "remote"], cwd=bundle).find("origin") < 0:
-        run(["git", "remote", "add", "origin", f"https://github.com/{full}.git"], cwd=bundle)
+    # An existing `origin` may point at a different repo — a reused bundle would push your code there
+    # and then pin a SHA that does not exist in the repo the entry names. Set it, then read it back.
+    wanted = f"https://github.com/{full}.git"
+    try:
+        run(["git", "remote", "remove", "origin"], cwd=bundle)
+    except PublishError:
+        pass
+    run(["git", "remote", "add", "origin", wanted], cwd=bundle)
+    actual = (run(["git", "remote", "get-url", "origin"], cwd=bundle) or "").strip()
+    if actual and actual != wanted:
+        raise PublishError(f"origin points at {actual}, not {wanted} — refusing to push")
     run(["git", "push", "-q", "-u", "origin", branch], cwd=bundle)
     return {"created": False, "repo": full,
             "url": run(["gh", "repo", "view", full, "--json", "url", "-q", ".url"])}
@@ -220,8 +229,7 @@ def tokens_files(bundle: Optional[Path]) -> list[str]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        parts = set(path.relative_to(root).parts)
-        if parts & skip or path.name in (".gitignore", ".DS_Store"):
+        if set(path.relative_to(root).parts) & (skip | {CATALOG_DIR}) or path.name in (".gitignore", ".DS_Store"):
             continue
         found.append(str(path.relative_to(root)))
     return sorted(found)
@@ -270,6 +278,10 @@ def _secrets():
 def install_local(bundle: Path, name: str, plugins_dir: Path,
                   validate: Callable[..., dict], run: Callable[..., str] = _run) -> dict:
     """Link the bundle into the profile. Re-validates first; never clobbers."""
+    # `name` reaches here from a request body. A separator or a leading dot turns the link target into
+    # somewhere else entirely, so the shape is checked before anything is written.
+    if not name or "/" in name or "\\" in name or name.startswith(".") or name in (".", ".."):
+        return {"ok": False, "error": f"{name!r} is not a plugin name"}
     check = validate(bundle)
     if not check.get("ok"):
         return {"ok": False, "error": "the package does not validate; fix it first",
@@ -285,7 +297,7 @@ def install_local(bundle: Path, name: str, plugins_dir: Path,
 
 def publish(bundle: Path, name: str, owner: str, manifest: dict,
             run: Callable[..., str] = _run, open_pull_request: bool = False) -> dict:
-    """secrets -> validate -> repo -> SHA -> entry -> (optionally) PR. Stops at the first refusal."""
+    """secrets -> validate -> commit (SHA) -> repo -> entry -> (optionally) PR. Stops at the first refusal."""
     bundle = Path(bundle)
     steps: list[dict] = []
 
@@ -307,17 +319,32 @@ def publish(bundle: Path, name: str, owner: str, manifest: dict,
                 "error": "the package failed `hermes plugins validate --install-deps`"}
 
     manifest = dict(manifest, _bundle=str(bundle))
-    identity = gh_identity(run)
-    sha = git_commit(bundle, f"{name} {manifest.get('version') or '0.1.0'}", identity, run)
+    try:
+        identity = gh_identity(run)
+        sha = git_commit(bundle, f"{name} {manifest.get('version') or '0.1.0'}", identity, run)
+    except (PublishError, OSError) as exc:
+        steps.append({"step": "commit", "ok": False, "detail": [str(exc)]})
+        return {"ok": False, "stage": "commit", "steps": steps, "error": str(exc)}
     steps.append({"step": "commit", "ok": True, "detail": [sha]})
 
-    repo = create_repo(bundle, owner, name, str(manifest.get("description") or name), run)
+    try:
+        repo = create_repo(bundle, owner, name, str(manifest.get("description") or name), run)
+    except (PublishError, OSError) as exc:
+        # The commit is real and local. Say so: a retry would otherwise stack a second one.
+        steps.append({"step": "repo", "ok": False, "detail": [str(exc)]})
+        return {"ok": False, "stage": "repo", "steps": steps, "sha": sha,
+                "error": f"{exc} (the local commit {sha[:7]} exists and is fine)"}
     steps.append({"step": "repo", "ok": True, "detail": [repo["url"]]})
 
     entry_text = catalog_entry(bundle, name, owner, sha, manifest)
     entry_path = bundle / CATALOG_DIR / f"{name}.yaml"
-    entry_path.parent.mkdir(parents=True, exist_ok=True)
-    entry_path.write_text(entry_text, encoding="utf-8")
+    try:
+        entry_path.parent.mkdir(parents=True, exist_ok=True)
+        entry_path.write_text(entry_text, encoding="utf-8")
+    except OSError as exc:
+        steps.append({"step": "catalog entry", "ok": False, "detail": [str(exc)]})
+        return {"ok": False, "stage": "entry", "steps": steps, "sha": sha, "repo": repo["url"],
+                "error": f"the repo {repo['url']} is live, but the entry could not be written: {exc}"}
     steps.append({"step": "catalog entry", "ok": True, "detail": [str(entry_path)]})
 
     result = {"ok": True, "stage": "pinned", "steps": steps, "name": name, "sha": sha,

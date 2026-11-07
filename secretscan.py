@@ -48,9 +48,10 @@ ASSIGNMENT = re.compile(
     """
 )
 
-TEXT_SUFFIXES = {".py", ".js", ".mjs", ".ts", ".json", ".yaml", ".yml", ".md", ".txt", ".toml",
-                 ".cfg", ".ini", ".sh", ".env", ".html", ".css"}
-SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules", ".pytest_cache", ".mypy_cache"}
+# The commit stages everything (`git add -A`), so the scan reads everything it can decode. A suffix
+# whitelist here was a real hole: .env.production, id_rsa, *.pem and *.bak were committed unscanned.
+SKIP_DIRS = {".git"}
+MAX_SCAN_BYTES = 4 * 1024 * 1024
 
 
 def _shannon(text: str) -> float:
@@ -78,8 +79,6 @@ def _worth_reading(value: str) -> bool:
 def scan_text(text: str, where: str) -> List[dict]:
     findings: List[dict] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
-        if "noqa: secrets" in line or "pragma: allowlist secret" in line:
-            continue
         for kind, pattern, shape in PATTERNS:
             match = pattern.search(line)
             if not match:
@@ -108,12 +107,15 @@ def scan_bundle(bundle: Path) -> dict:
             continue
         if set(path.relative_to(bundle).parts) & SKIP_DIRS:
             continue
-        if path.suffix.lower() not in TEXT_SUFFIXES and path.name not in (".env", "Dockerfile"):
-            continue
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            if path.stat().st_size > MAX_SCAN_BYTES:
+                continue
+            raw = path.read_bytes()
         except OSError:
             continue
+        if b"\x00" in raw[:4096]:          # binary: no credential text can be read out of it anyway
+            continue
+        text = raw.decode("utf-8", "replace")
         scanned += 1
         findings.extend(scan_text(text, str(path.relative_to(bundle))))
     return {"ok": not findings, "findings": findings, "files_scanned": scanned}

@@ -1,7 +1,6 @@
 """lazy-plugin — build a plugin from a description, a skill, or a cron job.
 
-Wires: 3 tools, a CLI subcommand, a slash command, one bundled skill, and a native desktop page
-with its own router.
+Wires: 3 tools, two bundled skills, and a native desktop page with its own router.
 Sibling modules are loaded by path so this works whether Hermes imports the plugin as a
 package or as a standalone directory.
 """

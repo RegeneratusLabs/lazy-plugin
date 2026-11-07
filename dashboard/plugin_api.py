@@ -385,8 +385,8 @@ async def install_created(payload: dict | None = None):
 
 def _install_created(name: str, force: bool = False) -> dict:
     core = _core()
-    source = core.state_dir() / "created" / name
-    if not name or not (source / "plugin.yaml").exists():
+    source = _bundle(name)          # resolves and confines to created/ — a `..` name is refused here
+    if source is None:
         return {"ok": False, "error": f"no generated plugin named {name!r}"}
     # Validating proves the package is shaped right; smoke proves it runs. A tool that raises from
     # a stub body is installable and useless, which is exactly what nobody asked for.
@@ -447,8 +447,8 @@ async def publish_created(payload: dict | None = None):
     name = str(payload.get("name") or "").strip()
     owner = str(payload.get("owner") or "").strip()
     open_pr = bool(payload.get("open_pr"))
-    bundle = _core().state_dir() / "created" / name
-    if not name or not (bundle / "plugin.yaml").exists():
+    bundle = _bundle(name)          # same guard as install: never a raw join on a request field
+    if bundle is None:
         return JSONResponse({"ok": False, "error": f"no generated plugin named {name!r}"},
                             status_code=404)
     job = _start_job(_publish_via_scope, bundle, name, owner, open_pr)
@@ -550,12 +550,13 @@ async def readiness_prepare(payload: dict | None = None):
 async def health():
     """Is the backend the one on disk? Route existence is the cheap signal; the payload is the proof."""
     core = _core()
-    report = await asyncio.to_thread(core.build_report)
-    return {
-        "ok": True,
-        "routes": ["report", "refresh", "gaps", "contributions", "contributions/package",
-                   "contributions/submit", "health"],
-        "catalog_entries": report["catalog"]["entries"],
-        "skills": report["headline"]["total_skills"],
-        "outbox": str(core.state_dir() / "outbox"),
-    }
+
+    def payload() -> dict:
+        catalog = core.load_catalog()
+        return {"ok": True,
+                "routes": sorted({getattr(r, "path", "").rsplit("/", 1)[-1] for r in router.routes} - {""}),
+                "catalog_entries": len(catalog.get("entries") or []),
+                "skills": len(core.scan_skills() or []),
+                "created": str(core.state_dir() / "created")}
+
+    return await asyncio.to_thread(payload)
