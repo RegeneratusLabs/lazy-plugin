@@ -51,7 +51,7 @@ terminator if one is needed.
 ## Layout
 
 - Page frame: 1px double rule inset 16px, page content inside it. That frame is the plate's border.
-- Header: `[cat] CAT'S CRADLE` in display serif + one line of thesis under it, verdict counts
+- Header: `[cat] LAZY PLUGIN` in display serif + one line of thesis under it, verdict counts
   right-aligned in monospace (`3 run · 1 needs a key`).
 - Build: source pills (a skill / a cron job / describe it), one primary action. No dropdown where a
   pill row fits.
@@ -83,7 +83,7 @@ The cat is the mascot, so the cat writes the chrome and never the proof.
   failed should not be cute at the reader. The only cat word allowed near a failure is `pounce`, and
   only in the invitation to try again.
 - **Facts are never replaced by flavour.** Exit codes, HTTP statuses, paths, `hermes plugins
-  validate`, the `cradle-N` stamp, tool names and the words install/publish stay literal. If a
+  validate`, the `lp-N` build stamp, tool names and the words install/publish stay literal. If a
   sentence would not survive being read in greyscale by a sceptical reviewer, it is not done.
 - **Jargon gets translated, not decorated:** plan (spec), check (validate), try-out (dispatch/smoke
   test), receipt (ledger), files (bundle), scheduled job (cron job).

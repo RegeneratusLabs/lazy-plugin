@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-16'
+const BUILD = 'lp-17'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -263,7 +263,7 @@ function chatPrompt(payload) {
       `(skill_view for a skill, or the job's own file).`
     : `The job, as described: ${payload.idea}`
   return [
-    'Build one plugin for Cat\'s Cradle (the lazy-plugin page). Follow the lazy-plugin-builder ' +
+    'Build one plugin for Lazy Plugin (the lazy-plugin page). Follow the lazy-plugin-builder ' +
       'skill exactly — load it first with skill_view; its body is the brief, not a suggestion.',
     '',
     target,
@@ -961,7 +961,7 @@ function CreatorPanel() {
         setStage('')
         setStageAt(0)
         fail(`this surface cannot start a turn (${(result && result.stage) || 'no chat'}) — ` +
-          'open Cat\'s Cradle in the desktop app to build')
+          'open Lazy Plugin in the desktop app to build')
       })
       .catch(err => fail(String(err && err.message ? err.message : err)))
   }
