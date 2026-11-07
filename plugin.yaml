@@ -1,12 +1,13 @@
 name: lazy-plugin
-version: 0.6.0
+version: 0.6.1
 description: >-
-  Plugin creator. Describe a plugin in a sentence, or pick a skill the agent wrote or a cron job
-  you already run, and it builds one: the model writes a spec (name, 1-5 tools, handler kinds,
-  parameters), fixed templates write the code, and `hermes plugins validate` decides whether it
-  ships. Handler bodies are limited to three safe shapes (command, http, file) plus an honest stub,
-  so generated code always registers and never carries injected code. Writes only to
-  $HERMES_HOME/lazy-plugin/created/ and never installs anything.
+  Build a Hermes plugin from a sentence, from a skill the agent wrote, or from a job that runs on a
+  schedule — then prove it runs. Your own agent drafts the spec, fixed templates write the code, the
+  catalog's validator gates it, and every tool is dispatched once through the real registry before
+  anyone installs anything: works, needs a key, blocked upstream, half-built or broken, with the
+  exact failing line. Four safe handler shapes (command, http, file, stub), so generated code always
+  registers and cannot carry injected logic. Writes only to $HERMES_HOME/lazy-plugin/created/ and
+  never installs by itself; publishing is a SHA-pinned catalog PR you send yourself.
 author: Josh Thomson
 provides_tools:
   - lazyplugin_create
