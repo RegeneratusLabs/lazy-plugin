@@ -1,6 +1,7 @@
 # Lazy Plugin
 
-**Say what you want built. Your agent writes it, this checks it, and it proves it runs before it ships.**
+**A page in Hermes Desktop where you describe a plugin and watch it get built — then proves it runs
+before you install anything.**
 
 ![The Lazy Plugin page](assets/preview.png)
 

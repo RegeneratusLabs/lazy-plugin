@@ -106,7 +106,7 @@ def create_repo(bundle: Path, owner: str, name: str, description: str,
 
 
 def catalog_entry(bundle: Path, name: str, owner: str, sha: str, manifest: dict,
-                  category: str = "tools", requires_hermes: str = ">=0.21.6") -> str:
+                  category: str = "tools", requires_hermes: str = ">=0.23.0") -> str:
     """One YAML file, every field the loader reads, no field it does not."""
     version = str(manifest.get("version") or "0.1.0")
     description = " ".join(str(manifest.get("description") or name).split())
@@ -207,9 +207,24 @@ def tokens_network_line(bundle: Optional[Path]) -> str:
 
 
 def tokens_files(bundle: Optional[Path]) -> list[str]:
+    """Every file a reviewer can open, not just the ones at the root.
+
+    A disclosure that lists only top-level .py files hides desktop/plugin.js and dashboard/, which
+    are half of what this plugin is.
+    """
     if bundle is None:
         return []
-    return sorted(p.name for p in Path(bundle).iterdir() if p.is_file() and p.name != ".gitignore")
+    root = Path(bundle)
+    skip = {".git", "__pycache__", ".venv", "node_modules", ".pytest_cache"}
+    found = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        parts = set(path.relative_to(root).parts)
+        if parts & skip or path.name in (".gitignore", ".DS_Store"):
+            continue
+        found.append(str(path.relative_to(root)))
+    return sorted(found)
 
 
 def pr_body(name: str, owner: str, manifest: dict, bundle: Optional[Path] = None) -> str:
