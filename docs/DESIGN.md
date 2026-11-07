@@ -58,18 +58,35 @@ terminator if one is needed.
 - Tiles: 2-up grid. Title + verdict pill on one line, the verdict sentence directly under it,
   description clamped to two, then monospace metadata, then actions (visible on hover, always
   visible on focus).
-- Result card: a ledger — `spec · files · validate · dispatch` — each row monospace with a tick or
+- Result card: a receipt — `plan · files · check · try-out` — each row monospace with a tick or
   the exact failing line. Never a green "all good" badge without the line beneath it.
 
 ## Verdict vocabulary (colour + word, never colour alone)
 
 | Verdict | Pill | Sentence |
 |---|---|---|
-| `works` | accent | "search_wikipedia returned real results" |
-| `needs-key` | warn | "sound package, needs a key: set TENOR_API_KEY" |
-| `upstream` | warn | "request works, far end refused it: HTTP 403" |
-| `scaffold` | fail | "broken: scaffold — handler never got written" |
-| `broken` | fail | "broken: <the loader's own error line>" |
+| `works` | accent | purrs — search_wikipedia came back with real results |
+| `needs-key` | warn | solid build, just wants a key: set TENOR_API_KEY |
+| `upstream` | warn | our side works, the far end turned us away: HTTP 403 |
+| `scaffold` | fail | broken: nothing was ever written in check_price |
+| `broken` | fail | broken: <the loader's own error line> |
+| `unchecked` | quiet | not tried out yet — give it a pounce |
+
+## Voice
+
+The cat is the mascot, so the cat writes the chrome and never the proof.
+
+- **One cat touch per region.** A heading, a button, an empty state. Two in the same block reads as
+  a bit; three reads as a theme park.
+- **Deadpan, never punny.** "Give the cat a job", not "purr-fect plugins, fur real".
+- **Failures stay plain.** `broken`, `blocked upstream`, `needs a key`, `half-built` — a plugin that
+  failed should not be cute at the reader. The only cat word allowed near a failure is `pounce`, and
+  only in the invitation to try again.
+- **Facts are never replaced by flavour.** Exit codes, HTTP statuses, paths, `hermes plugins
+  validate`, the `cradle-N` stamp, tool names and the words install/publish stay literal. If a
+  sentence would not survive being read in greyscale by a sceptical reviewer, it is not done.
+- **Jargon gets translated, not decorated:** plan (spec), check (validate), try-out (dispatch/smoke
+  test), receipt (ledger), files (bundle), scheduled job (cron job).
 
 Colour is a hint; the sentence carries the fact. A reviewer must be able to read the page in
 greyscale and still know which plugin runs.

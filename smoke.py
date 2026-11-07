@@ -376,20 +376,20 @@ def headline(report: dict) -> str:
     verdict = report.get("verdict")
     if verdict == "works":
         names = ", ".join(row["tool"] for row in report["tools"])
-        return f"works — {names} returned real results"
+        return f"purrs — {names} came back with real results"
     if verdict == "needs-key":
         detail = "; ".join(row["detail"] for row in report["tools"] if row["status"] == "needs-key")
-        return f"sound package, needs a key: {detail}"
+        return f"solid build, just wants a key: {detail}"
     if verdict == "upstream":
         detail = "; ".join(row["detail"] for row in report["tools"] if row["status"] == "upstream")
-        return f"request works, far end refused it: {detail}"
+        return f"our side works, the far end turned us away: {detail}"
     if verdict == "broken":
         first = next((row for row in report["tools"] if row["status"] in ("broken", "scaffold")), None)
         note = report["notes"][0] if report.get("notes") else (first or {}).get("detail", "")
         if first and first.get("status") == "scaffold":
-            return f"broken: scaffold — {first['tool']} never got written"
+            return f"broken: nothing was ever written in {first['tool']}"
         return f"broken: {note}" if note else "broken"
-    return "not checked"
+    return "not tried out"
 
 
 def write_report(bundle: Path, report: dict) -> Path:

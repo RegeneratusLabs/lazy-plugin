@@ -393,8 +393,8 @@ def _install_created(name: str, force: bool = False) -> dict:
     report = creator.smoke_plugin(source, live=False)
     if report.get("verdict") in ("broken",) and not force:
         return {"ok": False, "smoke": report,
-                "error": "this plugin does not run: " + creator._smoke_headline(report)
-                         + " — open it in the editor, or run the smoke test for detail"}
+                "error": "this one does not run: " + creator._smoke_headline(report)
+                         + " — try it out for the detail"}
     publish = _publish_mod()
     return publish.install_local(source, name, core.hermes_home() / "plugins",
                                  _creator_mod().validate_plugin)

@@ -89,7 +89,7 @@ def test_a_working_tool_is_graded_works(smoke_mod, tmp_path, loopback):
     report = smoke_mod.smoke(make_http_bundle(tmp_path, loopback))
     assert report["verdict"] == "works", report
     assert report["tools"][0]["status"] == "works"
-    assert "returned real results" in smoke_mod.headline(report)
+    assert "came back with real results" in smoke_mod.headline(report)
 
 
 def test_a_missing_key_is_reported_without_calling(smoke_mod, tmp_path, monkeypatch):
@@ -118,7 +118,7 @@ def register(ctx):
 """
     report = smoke_mod.smoke(bundle(tmp_path, body=body))
     assert report["verdict"] == "broken"
-    assert "scaffold" in smoke_mod.headline(report)
+    assert "nothing was ever written" in smoke_mod.headline(report)
 
 
 def test_a_crash_is_broken_and_names_the_error(smoke_mod, tmp_path):

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-13'
+const BUILD = 'cradle-14'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -150,21 +150,21 @@ const KIND_LABEL = {
 
 // Colour is a hint; the sentence carries the fact (DESIGN.md, verdict vocabulary).
 const VERDICT = {
-  works: { word: 'runs', tone: 'runs' },
+  works: { word: 'purrs', tone: 'runs' },
   'needs-key': { word: 'needs a key', tone: 'key' },
-  upstream: { word: 'upstream', tone: 'key' },
-  scaffold: { word: 'scaffold', tone: 'broken' },
+  upstream: { word: 'blocked upstream', tone: 'key' },
+  scaffold: { word: 'half-built', tone: 'broken' },
   broken: { word: 'broken', tone: 'broken' },
-  unchecked: { word: 'unchecked', tone: 'quiet' }
+  unchecked: { word: 'not tried out', tone: 'quiet' }
 }
 
 const FALLBACK_SENTENCE = {
-  works: 'the handler returned real results',
-  'needs-key': 'sound package, needs a key',
-  upstream: 'request works, far end refused it',
-  scaffold: 'broken: scaffold — handler never got written',
-  broken: 'broken: the loader raised',
-  unchecked: 'not dispatched yet — test it'
+  works: 'it came back with real results',
+  'needs-key': 'solid build, just wants a key',
+  upstream: 'our side works, the far end turned us away',
+  scaffold: 'broken: nothing was ever written in it',
+  broken: 'broken: it would not load',
+  unchecked: 'not tried out yet — give it a pounce'
 }
 
 function verdictOf(smoke) {
@@ -178,15 +178,19 @@ function sentenceOf(smoke) {
 }
 
 function countsLine(rows) {
-  const tally = { runs: 0, key: 0, broken: 0 }
+  // Counted by verdict, not by colour tone: "blocked upstream" is not "needs a key", and a summary
+  // that merges them tells the reader the wrong thing about their own shelf.
+  const tally = { runs: 0, key: 0, blocked: 0, broken: 0 }
   rows.forEach(row => {
-    const tone = verdictOf(row.smoke).tone
-    if (tone === 'runs') tally.runs += 1
-    else if (tone === 'key') tally.key += 1
-    else if (tone === 'broken') tally.broken += 1
+    const key = verdictOf(row.smoke).key
+    if (key === 'works') tally.runs += 1
+    else if (key === 'needs-key') tally.key += 1
+    else if (key === 'upstream') tally.blocked += 1
+    else if (key === 'scaffold' || key === 'broken') tally.broken += 1
   })
-  const parts = [`${tally.runs} run`]
+  const parts = [`${tally.runs} purring`]
   if (tally.key) parts.push(`${tally.key} ${tally.key === 1 ? 'needs' : 'need'} a key`)
+  if (tally.blocked) parts.push(`${tally.blocked} blocked`)
   if (tally.broken) parts.push(`${tally.broken} broken`)
   return parts.join(' · ')
 }
@@ -511,8 +515,8 @@ function PublishResult({ action, onPr }) {
   // Same chip, same door as the tile's repo link: the URL is a thing you open, not text you copy.
   function openLink(url) {
     openExternal(url).then(result => {
-      if (result === 'copied') setNote('link copied — open it in a browser')
-      else if (!result) setNote('could not open that link')
+      if (result === 'copied') setNote('copied — paste it into a browser')
+      else if (!result) setNote('that link would not open')
       else setNote('')
     })
   }
@@ -521,7 +525,7 @@ function PublishResult({ action, onPr }) {
     return jsx('div', {
       className: 'cc-row-value',
       style: { color: 'var(--cc-fail)' },
-      children: action.error || action.stage || 'publishing failed'
+      children: action.error || action.stage || 'publishing did not go through'
     })
   }
   const lines = (action.steps || []).map(step =>
@@ -570,7 +574,7 @@ function PublishResult({ action, onPr }) {
         ? jsxs('div', {
             style: { marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
             children: [
-              jsx(TileButton, { onClick: onPr, children: 'open the catalog PR' }),
+              jsx(TileButton, { onClick: onPr, children: 'open the pull request' }),
               jsx('span', {
                 className: 'cc-row-sub',
                 children: action.pr_error
@@ -629,7 +633,7 @@ function Ledger({ out }) {
   const dispatchOk = ['works', 'needs-key', 'upstream'].includes(verdict.key)
   const dispatchLine = smoke.verdict
     ? `${verdict.word} · ${sentenceOf(smoke)}${smoke.seconds ? ` · ${Number(smoke.seconds).toFixed(1)}s` : ''}`
-    : 'not dispatched'
+    : 'not tried out'
 
   return jsxs('div', {
     className: 'cc-ledger',
@@ -651,12 +655,12 @@ function Ledger({ out }) {
         className: 'cc-rows',
         children: [
           jsx(LedgerRow, {
-            label: 'spec',
+            label: 'plan',
             mark: tools.length ? '✓' : '✗',
             tone: tools.length ? '' : 'fail',
             value: tools.length
               ? `${tools.length} tool${tools.length === 1 ? '' : 's'} · ${tools.map(tool => tool.name).join(', ')}`
-              : 'no tools declared',
+              : 'no tools in it',
             sub: tools.map(tool => `${tool.name} — ${KIND_LABEL[tool.kind] || tool.kind}`)
           }, 'spec'),
           jsx(LedgerRow, {
@@ -667,23 +671,23 @@ function Ledger({ out }) {
             sub: files.length ? [files.join('  ')] : []
           }, 'files'),
           jsx(LedgerRow, {
-            label: 'validate',
+            label: 'check',
             mark: check.ok ? '✓' : '✗',
             tone: check.ok ? '' : 'fail',
             value: check.ok
-              ? 'passed — no collisions, no core override, safe to load'
-              : 'failed',
+              ? 'passed — nothing clashes, nothing overwritten'
+              : 'said no',
             sub: check.ok ? [] : [failLine]
           }, 'validate'),
           jsx(LedgerRow, {
-            label: 'dispatch',
+            label: 'try-out',
             mark: dispatchOk ? '✓' : '✗',
             tone: dispatchOk ? '' : (verdict.key === 'unchecked' ? 'warn' : 'fail'),
             value: dispatchLine
           }, 'dispatch'),
           out.timings
             ? jsx(LedgerRow, {
-                label: 'timing',
+                label: 'time',
                 mark: '·',
                 tone: '',
                 value: `model ${secs(out.timings.model)} · files ${secs(out.timings.files)} · ` +
@@ -691,11 +695,10 @@ function Ledger({ out }) {
                 sub: [
                   out.timings.source ? `reading the source took ${secs(out.timings.source)}` : '',
                   out.draft && out.draft.meta && out.draft.meta.lane
-                    ? `the spec came back on the ${out.draft.meta.lane} lane in ` +
-                      `${secs(out.draft.meta.seconds)}`
+                    ? `the plan came back in ${secs(out.draft.meta.seconds)}`
                     : '',
                   out.draft && out.draft.meta && out.draft.meta.structured_error
-                    ? `structured lane failed first, ${secs(out.draft.meta.structured_seconds)}: ` +
+                    ? `the first attempt failed after ${secs(out.draft.meta.structured_seconds)}: ` +
                       out.draft.meta.structured_error
                     : ''
                 ].filter(Boolean)
@@ -716,9 +719,12 @@ function Ledger({ out }) {
           jsx(TileButton, {
             onClick: () => act('publish'),
             disabled: !check.ok || !!busyAction,
-            children: busyAction === 'publish' ? 'publishing…' : 'publish to community'
+            children: busyAction === 'publish' ? 'publishing…' : 'publish it'
           }),
-          jsx('span', { className: 'cc-note', children: 'nothing runs until you install it' })
+          jsx('span', {
+            className: 'cc-note',
+            children: 'it does nothing until you install it — that is your call, not the cat\'s'
+          })
         ]
       }),
       action
@@ -766,7 +772,7 @@ function CreatorPanel() {
     CreatorPanel.__building = { at: inflight.at, idea: inflight.idea || '' }
     setLatch(CreatorPanel.__building)
     setBusy(true)
-    setStage(inflight.stage || 'your agent is still building — watching for the tile')
+    setStage(inflight.stage || 'your agent is still on it — watching for the tile')
     setStageAt((inflight.stageAt || inflight.at) / 1000)
     pollForTile()
   }, [])
@@ -836,7 +842,7 @@ function CreatorPanel() {
     setBusy(true)
     setOut(null)
     setError('')
-    setStage('handing this to your agent…')
+    setStage('passing it to your agent…')
     setStageAt(Date.now() / 1000)
 
     // Baseline the shelf first, so the tile we watch for is genuinely new.
@@ -848,7 +854,7 @@ function CreatorPanel() {
           at: Date.now(),
           idea: payload.idea,
           seen: CreatorPanel.__seen,
-          stage: 'your agent is building it in chat',
+          stage: 'your agent is on it in the chat',
           stageAt: Date.now()
         })
       })
@@ -856,7 +862,7 @@ function CreatorPanel() {
       .then(() => submitToChat(chatPrompt(payload)))
       .then(result => {
         if (result && result.ok) {
-          setStage('your agent is building it in chat — the tile lands when the dispatch passes')
+          setStage('your agent is on it in the chat — this card fills in once it passes its try-out')
           setStageAt(Date.now() / 1000)
           pollForTile()
           return
@@ -892,8 +898,8 @@ function CreatorPanel() {
           headline: (result && result.headline) || ''
         })
         if (handWritten) {
-          setError('that bundle appeared without a dispatch report, so the agent wrote it by hand — ' +
-            'the dispatch below is the only gate it has passed')
+          setError('that one turned up without a try-out on record, so the agent wrote it by hand — ' +
+            'the try-out below is the only thing it has passed')
         }
         if (CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
       })
@@ -919,8 +925,8 @@ function CreatorPanel() {
           }
           waited += 3000
           if (waited > 300000) {
-            fail('no tile yet — the chat turn may still be working. Tell me to keep watching, ' +
-              'or hit Reload desktop plugins once it lands')
+            fail('nothing yet — the chat turn may still be running. Ask me to keep watching, ' +
+              'or reload desktop plugins when it lands')
             return
           }
           setTimeout(tick, 3000)
@@ -942,10 +948,10 @@ function CreatorPanel() {
   const pillRow = jsxs('div', {
     className: 'cc-pills',
     children: [
-      chip('describe it', mode === 'describe', () => { setMode('describe'); setSourceName('') }),
-      chip(`a skill (${sources.skills.length})`, mode === 'skill',
+      chip('in your own words', mode === 'describe', () => { setMode('describe'); setSourceName('') }),
+      chip(`skills (${sources.skills.length})`, mode === 'skill',
         () => { setMode('skill'); setSourceName('') }),
-      chip(`a cron job (${sources.cron.length})`, mode === 'cron',
+      chip(`repeating jobs (${sources.cron.length})`, mode === 'cron',
         () => { setMode('cron'); setSourceName('') })
     ]
   })
@@ -956,8 +962,8 @@ function CreatorPanel() {
         className: 'cc-section',
         style: { marginTop: '15px' },
         children: [
-          jsx('div', { className: 'cc-h2', children: 'Weave one' }),
-          jsx('div', { className: 'cc-hint', children: 'the page is the form, the agent is the craftsman' })
+          jsx('div', { className: 'cc-h2', children: 'Give the cat a job' }),
+          jsx('div', { className: 'cc-hint', children: 'you say it, the cat kneads it into shape' })
         ]
       }),
       pillRow,
@@ -965,13 +971,13 @@ function CreatorPanel() {
         ? jsx('textarea', {
             value: idea,
             onChange: event => setIdea(event.target.value),
-            placeholder: 'Watch GPU prices and tell me when one drops under $600',
+            placeholder: 'Find me the best catnip deals across all the big retailers',
             rows: 3,
             className: 'cc-area',
             style: { marginTop: '9px' }
           })
         : jsxs('div', { style: { marginTop: '9px' }, children: [
-            jsx('div', { className: 'cc-label', children: mode === 'cron' ? 'pick a job you already run' : 'pick something the agent already knows how to do' }),
+            jsx('div', { className: 'cc-label', children: mode === 'cron' ? 'pick something that already runs on a schedule' : 'pick something your agent already knows how to do' }),
             jsx('div', {
               className: 'cc-pills',
               style: { marginTop: '6px', maxHeight: '8.5rem', overflowY: 'auto' },
@@ -1078,8 +1084,8 @@ function ChatEdit({ name, onSaved }) {
         }
         setText('')
         setNote(result.opened
-          ? 'handed over — the chat is open, watch the edit, the tile follows'
-          : 'handed over — open the chat to watch it, the tile follows')
+          ? 'handed over — the chat is open, and the card catches up when the change lands'
+          : 'handed over — open the chat to watch it; the card catches up when the change lands')
         watchForEdit()
       })
       .catch(err => setNote(String(err && err.message ? err.message : err)))
@@ -1089,7 +1095,7 @@ function ChatEdit({ name, onSaved }) {
   return jsxs('div', {
     style: { marginTop: '6px', paddingTop: '8px', borderTop: `1px solid ${CC.rule}` },
     children: [
-      jsx('div', { className: 'cc-label', children: 'ask for a change' }),
+      jsx('div', { className: 'cc-label', children: 'tell the cat what to change' }),
       jsxs('div', {
         style: { display: 'flex', alignItems: 'flex-end', gap: '6px', marginTop: '5px' },
         children: [
@@ -1097,7 +1103,7 @@ function ChatEdit({ name, onSaved }) {
             value: text,
             onChange: event => setText(event.target.value),
             rows: 2,
-            placeholder: 'make the price ceiling $700, and say which listing won',
+            placeholder: 'make the ceiling $700, and tell me which shop won',
             className: 'cc-area cc-edit-area',
             style: { flex: 1, minWidth: 0, fontSize: '.68rem', padding: '5px 7px' }
           }),
@@ -1112,7 +1118,7 @@ function ChatEdit({ name, onSaved }) {
       jsx('div', {
         className: 'cc-note',
         style: { marginTop: '5px' },
-        children: note || 'plain english — the agent reads the files, edits them and re-validates'
+        children: note || 'plain english — the agent reads the files, changes them and checks again'
       })
     ]
   })
@@ -1179,9 +1185,9 @@ function PluginTile({ plugin, onChanged }) {
   const toolCount = (plugin.tools || []).length
   const meta = [`${toolCount} tool${toolCount === 1 ? '' : 's'}`, `${plugin.files} files`]
   if (plugin.version) meta.push(`v${plugin.version}`)
-  if (plugin.validated === false) meta.push('validate failed')
+  if (plugin.validated === false) meta.push('check failed')
   if (plugin.installed) meta.push('installed')
-  if (plugin.published) meta.push('on github')
+  if (plugin.published) meta.push('on GitHub')
 
   return jsxs('article', {
     className: 'cc-tile',
@@ -1194,7 +1200,7 @@ function PluginTile({ plugin, onChanged }) {
         ]
       }),
       jsx('div', { className: 'cc-sentence', children: sentenceOf(plugin.smoke) }),
-      jsx('p', { className: 'cc-desc', children: plugin.description || 'no description' }),
+      jsx('p', { className: 'cc-desc', children: plugin.description || 'no description yet' }),
       jsx('div', {
         className: 'cc-meta',
         children: meta.map((part, index) => jsx('span', { children: index ? `· ${part}` : part }, index))
@@ -1214,12 +1220,12 @@ function PluginTile({ plugin, onChanged }) {
             title: plugin.published
               ? 'commit the current files to the same repo and repoint the catalog entry at the new commit'
               : 'create a public repo, pin the commit, write the catalog entry',
-            children: busy === 'publish' ? 'publishing…' : plugin.published ? 'republish' : 'publish'
+            children: busy === 'publish' ? 'publishing…' : plugin.published ? 'publish again' : 'publish'
           }),
           jsx(TileButton, {
             onClick: smoke,
             disabled: !!busy,
-            children: busy === 'smoke' ? 'testing…' : 'test it'
+            children: busy === 'smoke' ? 'trying it…' : 'try it out'
           }),
           jsx(TileButton, {
             onClick: () => setEditing(value => !value),
@@ -1245,7 +1251,7 @@ function PluginTile({ plugin, onChanged }) {
             ? jsx(TileButton, {
                 onClick: () => {
                   openExternal(plugin.published.repo).then(result => {
-                    if (result === 'copied') setNote('link copied — open it in a browser')
+                    if (result === 'copied') setNote('copied — paste it into a browser')
                     else if (!result) setNote('could not open the repo link')
                   })
                 },
@@ -1264,18 +1270,19 @@ function PluginTile({ plugin, onChanged }) {
 }
 
 function EmptyState() {
-  const example = 'Watch GPU prices and tell me when one drops under $600'
+  const example = 'Find me the best catnip deals across all the big retailers'
   return jsxs('div', {
     className: 'cc-empty',
     children: [
       jsx(Cat, { size: 128 }),
       jsxs('div', {
         children: [
-          jsx('div', { className: 'cc-empty-line', children: 'Nothing woven yet.' }),
+          jsx('div', { className: 'cc-empty-line', children: "The cat hasn't built anything yet." }),
           jsx('div', {
             className: 'cc-empty-copy',
-            children: 'Pick a skill or a cron job you already run, or describe the job in one sentence. ' +
-              'Every build lands as files you can read, validates itself, and gets dispatched once before it ships.'
+            children: 'Pick a skill or a job that already runs on a schedule, or just say what you ' +
+              'want in a sentence. The cat leaves the files out for you to read, checks its own ' +
+              'work, and gives it one real try-out before it counts.'
           }),
           jsx('button', {
             className: 'cc-example',
@@ -1303,7 +1310,7 @@ function Hero({ rows }) {
           jsx('div', { className: 'cc-word', children: 'Lazy Plugin' }),
           jsx('div', {
             className: 'cc-thesis',
-            children: 'a plugin is a spec, a validation, and one dispatch that proves it runs'
+            children: 'a plugin is an idea, a check, and one real try-out before it ships'
           })
         ]
       }),
@@ -1312,7 +1319,7 @@ function Hero({ rows }) {
           rows
             ? jsx('div', {
                 className: 'cc-counts',
-                children: rows.length ? countsLine(rows) : 'nothing woven yet'
+                children: rows.length ? countsLine(rows) : 'nothing on the shelf yet'
               })
             : null,
           jsx('div', { className: 'cc-stamp', children: BUILD })
@@ -1364,7 +1371,7 @@ function LazyPage() {
             jsx('div', { className: 'cc-rule', style: { marginTop: '18px' } }),
             jsx('div', { className: 'cc-rule-gap' }),
             error
-              ? jsx('div', { className: 'cc-error', children: `could not list what you have built: ${error}` })
+              ? jsx('div', { className: 'cc-error', children: `could not read the shelf: ${error}` })
               : null,
             jsxs('div', {
               className: 'cc-section',
@@ -1373,7 +1380,7 @@ function LazyPage() {
                 jsx('div', {
                   className: 'cc-hint',
                   children: rows === null
-                    ? 'reading the shelf…'
+                    ? 'checking the shelf…'
                     : `${count} plugin${count === 1 ? '' : 's'} · ${tools} tool${tools === 1 ? '' : 's'}`
                 })
               ]
