@@ -168,3 +168,42 @@ def test_tokens_files_skips_working_dirs_and_caps(tmp_path):
     capped = PUBLISH.tokens_files(bundle, limit=5)
     assert len(capped) == 6
     assert capped[-1].startswith("...and")
+
+
+# --- the catalog entry carries the marketplace picture -------------------------------------------
+
+def test_catalog_entry_emits_the_pinned_banner_and_gallery(tmp_path):
+    bundle = tmp_path / "lazy-plugin"
+    (bundle / "assets").mkdir(parents=True)
+    (bundle / "assets" / "banner.png").write_bytes(b"png")
+    (bundle / "assets" / "preview.png").write_bytes(b"png")
+    entry = PUBLISH.catalog_entry(bundle, "lazy-plugin", "someone", "a" * 40,
+                                  {"version": "1.0", "description": "d", "provides_tools": ["t"]})
+    assert 'image: https://raw.githubusercontent.com/someone/lazy-plugin/' + "a" * 40 + "/assets/banner.png" in entry
+    assert "screenshots:\n  - https://raw.githubusercontent.com/someone/lazy-plugin/" in entry
+    assert "/assets/preview.png" in entry
+
+
+def test_catalog_entry_without_assets_emits_no_image(tmp_path):
+    bundle = tmp_path / "bare"
+    bundle.mkdir()
+    entry = PUBLISH.catalog_entry(bundle, "bare", "someone", "b" * 40,
+                                  {"version": "1.0", "description": "d", "provides_tools": ["t"]})
+    assert "image:" not in entry
+    assert "screenshots: []" in entry
+
+
+# --- the manifest reader works without PyYAML ----------------------------------------------------
+
+def test_folded_description_parses_without_pyyaml(tmp_path, monkeypatch):
+    import sys
+    bundle = tmp_path / "p"
+    bundle.mkdir()
+    (bundle / "plugin.yaml").write_text(
+        "name: p\nversion: 0.1.0\ndescription: >-\n  A page where you\n  describe a plugin.\n"
+        "provides_tools:\n  - one\n  - two\n")
+    monkeypatch.setitem(sys.modules, "yaml", None)     # makes `import yaml` raise
+    manifest = CREATOR.read_manifest(bundle)
+    assert manifest["description"].startswith("A page where you")
+    assert manifest["description"] != ">-"
+    assert manifest["provides_tools"] == ["one", "two"]

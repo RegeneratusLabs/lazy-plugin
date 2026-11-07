@@ -22,6 +22,8 @@ from typing import Callable, Optional
 
 HERMES_REPO = "NousResearch/hermes-agent"
 CATALOG_DIR = "plugin-catalog"
+# Cosmetic catalog assets, by convention. Missing files are simply not emitted.
+ASSETS = {"image": "assets/banner.png", "screenshots": ["assets/preview.png"]}
 GITIGNORE = "__pycache__/\n*.pyc\n*.tar.gz\n.gitignore\n"
 
 
@@ -125,6 +127,18 @@ def catalog_entry(bundle: Path, name: str, owner: str, sha: str, manifest: dict,
     title = name.replace("-", " ").replace("_", " ").title()
     repo = f"https://github.com/{owner}/{name}"
 
+    # The catalog's cosmetic fields: `image` is a 2:1 picture on a GitHub host, `screenshots` fills the
+    # gallery on /docs/plugins/<name>. Both are pinned to the SHA being submitted, so they cannot drift
+    # away from the code a reviewer checked out.
+    def asset(rel: str) -> str:
+        path = Path(bundle) / rel
+        if not path.is_file():
+            return ""
+        return f"https://raw.githubusercontent.com/{owner}/{name}/{sha}/{rel}"
+
+    image = asset(ASSETS.get("image", ""))
+    shots = [url for url in (asset(rel) for rel in ASSETS.get("screenshots", [])) if url]
+
     def block(key: str, values: list[str]) -> str:
         if not values:
             return f"  {key}: []\n"
@@ -142,7 +156,10 @@ def catalog_entry(bundle: Path, name: str, owner: str, sha: str, manifest: dict,
         f"tier: community\n"
         f"category: {category}\n"
         f"docs_url: {repo}#readme\n"
-        f"readme: true\n"
+        # image/screenshots are cosmetic to the loader but they are the marketplace tile and gallery.
+        + (f"image: {image}\n" if image else "")
+        + ("screenshots:\n" + "".join(f"  - {url}\n" for url in shots) if shots else "screenshots: []\n")
+        + f"readme: true\n"
         f'requires_hermes: "{requires_hermes}"\n'
         f"capabilities:\n"
         + block("provides_tools", tools)

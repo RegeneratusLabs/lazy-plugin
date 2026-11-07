@@ -718,8 +718,16 @@ def read_manifest(bundle: Path) -> dict:
             return loaded
     except Exception:
         pass
-    out, pending = {}, None
+    out, pending, block, chunk = {}, None, None, []
     for line in text.splitlines():
+        if block is not None:                      # collecting a >- / | folded scalar
+            if line.strip() and not line[:1].isspace():
+                out[block] = " ".join(chunk).strip()
+                block = None                        # dedented: fall through and parse this line
+            else:
+                if line.strip():
+                    chunk.append(line.strip())
+                continue
         item = re.match(r"^\s+-\s*(.+)$", line)
         if item and pending:
             out[pending].append(item.group(1).strip().strip("'\""))
@@ -729,12 +737,21 @@ def read_manifest(bundle: Path) -> dict:
             pending = None
             continue
         field, value = key.group(1), key.group(2).strip()
+        if value in (">-", ">", "|", "|-", ">+", "|+"):
+            # A folded/literal block: its text is on the following indented lines. Without this the
+            # value came back as the marker itself, and every generated catalog entry got ">-" as
+            # its description.
+            block, chunk = field, []
+            out[field] = ""
+            continue
         if value:
             out[field] = value.strip("'\"")
             pending = None
         else:
             out[field] = []
             pending = field
+    if block is not None and block in out:
+        out[block] = " ".join(chunk).strip()
     return out
 
 
