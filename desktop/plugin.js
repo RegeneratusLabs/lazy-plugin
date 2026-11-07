@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'lp-17'
+const BUILD = 'lp-18'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -88,9 +88,6 @@ const CC_STYLE = `
   animation: cc-pulse 1.3s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .cc-dot { animation: none; opacity: .8; } }
 .cc-build-hint { font-family: ${CC.mono}; font-size: .56rem; color: ${CC.muted}; }
-.cc-precheck { display: flex; flex-direction: column; gap: 3px; margin-top: 10px;
-  border-left: 1px solid ${CC.rule}; padding-left: 9px; }
-.cc-precheck-name { font-family: ${CC.mono}; font-size: .62rem; color: ${CC.paper}; }
 
 .cc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 760px) { .cc-tiles { grid-template-columns: minmax(0, 1fr); } }
@@ -239,11 +236,6 @@ function makeApi(ctx) {
   }
   return {
     sources: () => rest('/sources'),
-    similar: (name, description, tools) => {
-      const query = new URLSearchParams({ name: name || '', description: description || '' })
-      if (tools && tools.length) query.set('tools', tools.join(','))
-      return rest(`/similar?${query.toString()}`)
-    },
     created: () => rest('/created'),
     job: id => rest(`/jobs/${id}`),
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
@@ -608,50 +600,10 @@ function Ledger({ out }) {
   const verdict = verdictOf(smoke)
   const [action, setAction] = useState(null)
   const [busyAction, setBusyAction] = useState('')
-  const [catalog, setCatalog] = useState(null)
-  const [publishConfirmed, setPublishConfirmed] = useState(false)
-
-  // Does the catalog already do this? Checked once, when the receipt appears, because it is the
-  // same question a maintainer will ask when the PR lands.
-  useEffect(() => {
-    let live = true
-    const description = (spec && spec.description) || out.description || ''
-    CreatorPanel.__api
-      .similar(out.name, description, tools.map(tool => tool.name))
-      .then(result => { if (live) setCatalog(result || null) })
-      .catch(err => {
-        if (live) setCatalog({ verdict: 'unknown', matches: [], checked: 0,
-                               error: String(err && err.message ? err.message : err) })
-      })
-    return () => { live = false }
-  }, [out.name])
-
-  const catalogClose = catalog && (catalog.verdict === 'similar' || catalog.verdict === 'duplicate')
-  const catalogLine = !catalog
-    ? 'checking the catalog…'
-    : catalog.verdict === 'unknown'
-      ? `could not read the catalog${catalog.error ? ` — ${catalog.error}` : ''}`
-      : catalogClose
-        ? `${catalog.verdict === 'duplicate' ? 'looks like' : 'similar to'} ${catalog.matches.map(match => match.name).slice(0, 3).join(', ')}`
-        : catalog.matches.length
-          ? `nothing close — checked ${catalog.checked.toLocaleString()} entries`
-          : `nothing similar in ${catalog.checked.toLocaleString()} entries`
 
   function act(kind, openPr = false) {
     setBusyAction(kind)
     setAction({ kind, stage: 'starting…' })
-    if (kind === 'publish' && catalogClose && !publishConfirmed) {
-      // Same consent posture as install: the evidence is on screen, and going ahead is a decision.
-      setPublishConfirmed(true)
-      setBusyAction('')
-      setAction({
-        kind: 'publish',
-        ok: false,
-        error: `the catalog already has ${catalog.matches.map(match => match.name).slice(0, 3).join(', ')} — ` +
-          'click publish again to go ahead anyway'
-      })
-      return
-    }
     if (kind === 'install') {
       CreatorPanel.__api
         .install(out.name)
@@ -733,16 +685,6 @@ function Ledger({ out }) {
             tone: dispatchOk ? '' : (verdict.key === 'unchecked' ? 'warn' : 'fail'),
             value: dispatchLine
           }, 'dispatch'),
-          jsx(LedgerRow, {
-            label: 'catalog',
-            mark: catalogClose ? '⚠' : (catalog && catalog.verdict !== 'unknown' ? '✓' : '·'),
-            tone: catalogClose ? 'warn' : '',
-            value: catalogLine,
-            sub: catalogClose && catalog
-              ? catalog.matches.slice(0, 3).map(match =>
-                  `${match.name} — ${(match.why || []).join('; ') || 'shares vocabulary'}`)
-              : []
-          }, 'catalog'),
           out.timings
             ? jsx(LedgerRow, {
                 label: 'time',
@@ -818,7 +760,6 @@ function CreatorPanel() {
   const [out, setOut] = useState(null)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
-  const [precheck, setPrecheck] = useState(null)
   const [elapsed, setElapsed] = useState(0)
   const [stageAt, setStageAt] = useState(0)
   const [latch, setLatch] = useState(CreatorPanel.__building)
@@ -887,29 +828,7 @@ function CreatorPanel() {
   // itself, so the verdict is never taken from the agent's word.
   function buildInChat() {
     setNote('')
-    if (precheck) {           // they have seen the match; this click is consent
-      setPrecheck(null)
-      startChatBuild()
-      return
-    }
-    if (!idea.trim()) { startChatBuild(); return }
-    setBusy(true)
-    setStage('checking the catalog…')
-    setStageAt(Date.now() / 1000)
-    CreatorPanel.__api
-      .similar('', idea.trim(), [])
-      .then(result => {
-        const close = result && (result.verdict === 'similar' || result.verdict === 'duplicate')
-        if (close) {
-          setBusy(false)
-          setStage('')
-          setStageAt(0)
-          setPrecheck(result)
-          return
-        }
-        startChatBuild()
-      })
-      .catch(() => startChatBuild())
+    startChatBuild()
   }
 
   function startChatBuild() {
@@ -1083,7 +1002,7 @@ function CreatorPanel() {
         style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '9px', marginTop: '10px' },
         children: [
           jsx(TileButton, { onClick: buildInChat, disabled: !canBuild, primary: canBuild,
-            children: busy ? 'making it…' : precheck ? 'build it anyway' : 'make it' }),
+            children: busy ? 'making it…' : 'make it' }),
           sourceName
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
@@ -1112,29 +1031,6 @@ function CreatorPanel() {
             : null,
           !busy && note
             ? jsx('span', { className: 'cc-note', children: note })
-            : null,
-          precheck
-            ? jsxs('div', {
-                className: 'cc-precheck',
-                children: [
-                  jsx('div', {
-                    className: 'cc-label',
-                    children: `the catalog may already do this — ${precheck.checked.toLocaleString()} entries checked`
-                  }),
-                  ...precheck.matches.slice(0, 3).map(match =>
-                    jsxs('div', {
-                      style: { display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'baseline' },
-                      children: [
-                        jsx('span', { className: 'cc-precheck-name', children: match.name }),
-                        jsx('span', { className: 'cc-note', children: (match.why || []).join('; ') })
-                      ]
-                    }, match.name)),
-                  jsx('span', {
-                    className: 'cc-note',
-                    children: 'nothing has been built yet — build it anyway to go ahead'
-                  })
-                ]
-              })
             : null,
         ]
       }),

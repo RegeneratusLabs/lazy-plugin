@@ -126,7 +126,10 @@ def candidates(days: int = DEFAULT_DAYS, limit: int = MAX_CANDIDATES) -> dict:
     cutoff = datetime.date.today() - datetime.timedelta(days=days)
     usage = _usage()
     try:
-        catalog_ids, _meta = _CORE.gate_index(_CORE.load_catalog()["entries"])
+        # Only what this needs: does a catalog plugin already carry this skill's name.
+        catalog_ids = {str(e.get("name") or "").strip().lower()
+                       for e in _CORE.load_catalog()["entries"]}
+        catalog_ids.discard("")
     except Exception:
         catalog_ids = set()
 

@@ -48,28 +48,12 @@ def _contrib_mod():
     return mod
 
 
-@router.get("/report")
-async def report(format: str = "json", min_match: int = 1):
-    core = _core()
-    data = await asyncio.to_thread(core.build_report, "full", max(1, min(10, min_match)))
-    if format == "summary":
-        data["text"] = core.summary_text(data)
-    return data
-
-
 @router.post("/refresh")
 async def refresh():
     core = _core()
     payload = await asyncio.to_thread(core.load_catalog, True)
-    index, _ = core.gate_index(payload["entries"])
-    return {"entries": len(payload["entries"]), "identifiers": len(index),
+    return {"entries": len(payload["entries"]),
             "generated_at": payload.get("generated_at"), "source": payload.get("source")}
-
-
-@router.get("/gaps")
-async def gaps(limit: int = 20):
-    core = _core()
-    return await asyncio.to_thread(core.gaps, max(1, min(200, limit)))
 
 
 @router.get("/contributions")
@@ -484,17 +468,6 @@ def _publish_worker(job: str, bundle, name: str, owner: str, open_pr: bool) -> N
         entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
     finally:
         entry["finished"] = time.time()
-
-
-@router.get("/similar")
-async def similar(name: str = "", description: str = "", tools: str = ""):
-    """Which catalog entries already do this job — plugin against plugin, no model involved.
-
-    Used twice: on the idea before a build starts, and on the receipt before publish, so a
-    duplicate is a warning the user can read rather than a surprise a maintainer finds.
-    """
-    chosen = [tool.strip() for tool in tools.split(",") if tool.strip()]
-    return await asyncio.to_thread(_core().similar_plugins, name, description, chosen)
 
 
 @router.get("/sources")

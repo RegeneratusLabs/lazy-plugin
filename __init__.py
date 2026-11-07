@@ -34,7 +34,6 @@ def register(ctx) -> None:
 
     tools = _load("tools", "tools.py")
     schemas = _load("schemas", "schemas.py")
-    cli = _load("cli", "cli.py")
 
     for schema in schemas.ALL:
         ctx.register_tool(
@@ -45,16 +44,6 @@ def register(ctx) -> None:
             description=schema["description"].split(".")[0],
             emoji="\U0001F9ED",
         )
-
-    ctx.register_cli_command(
-        "lazy-plugin",
-        help="Build a plugin from a description, a skill, or a cron job",
-        setup_fn=cli.setup,
-        handler_fn=cli.run,
-        description="Plugin creator: spec -> templates -> validated plugin (never installs)",
-    )
-    ctx.register_command("lazy", handler=cli.slash, args_hint="[create|sources|built]",
-                         description="Build a plugin from a description or a workflow")
 
     skills_root = _HERE / "skills"
     if skills_root.is_dir():

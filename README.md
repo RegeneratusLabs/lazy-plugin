@@ -65,24 +65,6 @@ model would call it, and graded.
 The receipt is a straight line — `plan · files · check · try-out` — and every row is either a tick
 or the exact failing line. No green badge without the line underneath it.
 
-## Before you build, and before you publish
-
-The catalog is 1,063 entries, so "does this already exist?" is a fair question to ask *before*
-spending a turn — and an even fairer one to answer before a maintainer reads your PR.
-
-The check is deterministic and comes in two places: on the idea, and on the receipt.
-
-```
-catalog   ⚠ similar to hermes-plugin-gen, mcp-plugin-creator
-             hermes-plugin-gen — same tool name: plugin_scaffold
-             mcp-plugin-creator — tool names share: scaffold
-```
-
-A match is anchored in a **tool name or a rare name token** — shared prose can nudge a score but can
-never qualify a match on its own, because every catalog description is wordy and word-matching is how
-the last matcher lied. `similar` or `duplicate` on the receipt makes **publish** a two-click verb, and
-a collision on the idea makes **make it** one: the evidence is on screen before you commit to it.
-
 ## Never installs by itself
 
 Generated plugins land in `$HERMES_HOME/lazy-plugin/created/<name>/` as files you can read. Nothing is
