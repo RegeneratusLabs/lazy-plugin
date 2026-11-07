@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-15'
+const BUILD = 'cradle-16'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -1131,7 +1131,7 @@ function CreatorPanel() {
                     }, match.name)),
                   jsx('span', {
                     className: 'cc-note',
-                    children: 'click make it again to build it anyway'
+                    children: 'nothing has been built yet — build it anyway to go ahead'
                   })
                 ]
               })
