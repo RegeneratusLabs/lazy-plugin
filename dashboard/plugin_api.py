@@ -391,7 +391,7 @@ def _install_created(name: str, force: bool = False) -> dict:
     # a stub body is installable and useless, which is exactly what nobody asked for.
     creator = _creator_mod()
     report = creator.smoke_plugin(source, live=False)
-    if report.get("verdict") in ("broken",) and not force:
+    if report.get("verdict") in ("broken", "scaffold") and not force:
         return {"ok": False, "smoke": report,
                 "error": "this one does not run: " + creator._smoke_headline(report)
                          + " — try it out for the detail"}
@@ -484,6 +484,17 @@ def _publish_worker(job: str, bundle, name: str, owner: str, open_pr: bool) -> N
         entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
     finally:
         entry["finished"] = time.time()
+
+
+@router.get("/similar")
+async def similar(name: str = "", description: str = "", tools: str = ""):
+    """Which catalog entries already do this job — plugin against plugin, no model involved.
+
+    Used twice: on the idea before a build starts, and on the receipt before publish, so a
+    duplicate is a warning the user can read rather than a surprise a maintainer finds.
+    """
+    chosen = [tool.strip() for tool in tools.split(",") if tool.strip()]
+    return await asyncio.to_thread(_core().similar_plugins, name, description, chosen)
 
 
 @router.get("/sources")

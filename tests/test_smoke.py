@@ -107,7 +107,8 @@ def register(ctx):
     assert "FIXTURE_TOKEN" in smoke_mod.headline(report)
 
 
-def test_a_stub_body_is_broken_not_valid(smoke_mod, tmp_path):
+def test_a_stub_body_is_half_built_not_broken(smoke_mod, tmp_path):
+    """Unfinished is not the same as failed: a green validate line above a red receipt reads as a lie."""
     body = """
 def handle_do_it(params, **kwargs):
     raise NotImplementedError("This tool is a scaffold. Developer must write a parser")
@@ -117,7 +118,8 @@ def register(ctx):
                       handler=handle_do_it, description="x")
 """
     report = smoke_mod.smoke(bundle(tmp_path, body=body))
-    assert report["verdict"] == "broken"
+    assert report["verdict"] == "scaffold"
+    assert "half-built" in smoke_mod.headline(report)
     assert "nothing was ever written" in smoke_mod.headline(report)
 
 
@@ -150,7 +152,11 @@ def test_a_package_that_cannot_import_is_broken(smoke_mod, tmp_path):
 
 def test_sample_params_are_plausible(smoke_mod):
     params = smoke_mod.sample_params({"query": "phrase", "limit": "count", "city": "place"})
-    assert params["query"] == "cat"
+    assert params["query"] == "cat nip"
+    # a date or a domain answered "test" is a 404 the receipt would blame on the far end
+    typed = smoke_mod.sample_params({"date": "day", "domain": "host", "email": "address"})
+    assert typed["date"][:2] == "20" and typed["date"][4] == "-"
+    assert typed["domain"] == "example.com" and "@" in typed["email"]
     assert params["limit"] == 3
     assert params["city"] == "Brisbane"
 

@@ -213,20 +213,8 @@ def handle_built(params: Optional[dict] = None, **kwargs: Any) -> str:
         return _err(exc, "could not list generated plugins")
 
 
-def handle_pending(params: Optional[dict] = None, **kwargs: Any) -> str:
-    """The page writes requests here; this is how the agent finds them."""
-    try:
-        queue = _load_sibling("build_queue", "build_queue.py")
-        rows = queue.pending(core.hermes_home())
-        return json.dumps({"ok": True, "requests": rows, "prompt": queue.as_prompt(rows),
-                           "none": "no requests queued" if not rows else ""})
-    except Exception as exc:
-        return _err(exc, "could not read the request queue")
-
-
 HANDLERS = {
     "lazyplugin_create": handle_create,
     "lazyplugin_sources": handle_sources,
     "lazyplugin_built": handle_built,
-    "lazyplugin_pending": handle_pending,
 }

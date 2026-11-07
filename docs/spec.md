@@ -62,6 +62,10 @@ Nothing is written until the spec passes; nothing is offered for install until i
 4. `contract_violations` — one positional `params`, `**kwargs`, a `json.dumps` return. A bundle that
    misses the handler contract is deleted rather than left on the shelf looking fine.
 5. `dispatch` — every tool called once through the real registry with sample arguments.
+6. `similar_plugins` — the finished plugin against the live catalog, twice: on the idea before a
+   build (a collision turns `make it` into a two-click verb) and on the receipt before publish
+   (`similar`/`duplicate` turns `publish` into a two-click verb). Anchored on tool names and rare
+   name tokens only; prose overlap can nudge a score but never qualify a match.
 
 ## Verdict vocabulary
 

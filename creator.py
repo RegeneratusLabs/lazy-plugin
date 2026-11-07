@@ -670,8 +670,44 @@ def draft_spec(idea: str, llm, context: str = "") -> dict:
                 "problems": ["the model did not return a JSON object"]}
 
     clean, problems = validate_spec(parsed)
+    if clean is None and problems:
+        # One repair pass, then stop. The refusal lines are the most useful prompt we will ever have
+        # for this spec, and handing them back is far cheaper than a user hitting a dead end.
+        repaired, repair_problems = _repair_spec(llm, payload, problems, meta)
+        if repaired is not None:
+            clean, problems = repaired, []
+        else:
+            problems = repair_problems or problems
     return {"ok": clean is not None, "stage": "spec" if clean is None else "drafted",
             "spec": clean, "problems": problems, "raw": raw[:800], "meta": meta}
+
+
+def _repair_spec(llm, payload: str, problems: list, meta: dict):
+    """Hand the refusal back once. Returns (clean_spec, None) or (None, new_problems)."""
+    asked = (f"{payload}\n\nYour spec was refused for these reasons:\n- "
+             + "\n- ".join(str(problem) for problem in problems[:8])
+             + "\n\nReturn ONE corrected JSON object of the same shape, fixing exactly those. "
+               "Do not add tools that were not asked for.")
+    try:
+        result = llm.complete(
+            messages=[{"role": "system", "content": DRAFT_INSTRUCTIONS + "\n\nJSON only, no code fence."},
+                      {"role": "user", "content": asked}],
+            temperature=0.1, max_tokens=2000, timeout=180,
+            purpose="lazy-plugin.create.repair",
+        )
+    except Exception as exc:
+        meta["repair_error"] = f"{type(exc).__name__}: {exc}"[:200]
+        return None, None
+    parsed = _extract_json(getattr(result, "text", "") or "")
+    if not isinstance(parsed, dict):
+        meta["repair_error"] = "the repair attempt did not return a JSON object"
+        return None, None
+    clean, remaining = validate_spec(parsed)
+    meta["repaired"] = {"asked": [str(problem)[:120] for problem in problems[:8]],
+                        "fixed": clean is not None}
+    if clean is None:
+        meta["repaired"]["still_refused"] = [str(problem)[:120] for problem in remaining[:8]]
+    return clean, remaining
 
 
 def read_manifest(bundle: Path) -> dict:

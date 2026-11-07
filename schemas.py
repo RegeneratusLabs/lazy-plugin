@@ -166,14 +166,4 @@ BUILT = {
     "parameters": {"type": "object", "properties": {}, "required": []},
 }
 
-PENDING = {
-    "name": "lazyplugin_pending",
-    "description": (
-        "Plugin build requests queued from the Lazy Plugin page, which cannot start a turn by "
-        "itself. Call this when the user says they queued a plugin, then build each request with "
-        "lazyplugin_create and answer the one question it cannot guess."
-    ),
-    "parameters": {"type": "object", "properties": {}, "required": []},
-}
-
-ALL = [CREATE, SOURCES, BUILT, PENDING]
+ALL = [CREATE, SOURCES, BUILT]

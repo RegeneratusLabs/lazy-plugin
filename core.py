@@ -165,6 +165,126 @@ def load_catalog(force: bool = False) -> dict:
             "error": "catalog unavailable: no cache and the fetch failed"}
 
 
+# Words that carry no identity. Short connectors, plus the vocabulary every plugin description uses,
+# so "search" and "report" cannot make two unrelated plugins look like one.
+_STOP = set("""a an the and or of for to in on with from by as at is are be it its this that these those
+you your we our they them their i me my can will would should could may might must do does did done
+plugin plugins hermes agent agents tool tools build builds builder make makes made get gets got fetch
+fetches return returns returned result results data api call calls called use uses used using into
+over under more most less least new old one two three first last next best top also just only very
+search searches find finds finding look looks list lists show shows give gives given take takes
+from about across between during before after while when where which who whom what how why all any
+each every some such than then there here not no yes""".split())
+
+
+def _tokens(text: str) -> set:
+    words = re.split(r"[^a-z0-9]+", str(text or "").lower())
+    return {word for word in words if len(word) >= 3 and word not in _STOP}
+
+
+def similar_plugins(name: str = "", description: str = "", tools: Iterable[str] = (),
+                    limit: int = 3) -> dict:
+    """Which catalog entries already do this job — plugin against plugin, no model involved.
+
+    Deliberately not the old gap matcher: that inferred intent from skill prose into a catalog and
+    was wrong too often to ship. This compares a generated plugin (name, description, tool names)
+    with entries that carry the same three fields, so both sides speak one vocabulary and the worst
+    case is a warning nobody needed.
+    """
+    payload = load_catalog()
+    entries = payload.get("entries") or []
+    ours = [str(tool) for tool in tools or []]
+    our_tool_names = {tool.lower() for tool in ours}
+    our_tool_tokens = set()
+    for tool in ours:
+        our_tool_tokens |= _tokens(tool.replace("_", " "))
+    our_name = _tokens(str(name).replace("-", " ").replace("_", " "))
+    our_desc = _tokens(description)
+
+    # Rarity weighting, so "watch" (in a dozen plugin names) cannot outvote "catnip" (in none).
+    # Document frequency over entry names and tool names; a token nobody else uses is identity.
+    df: Dict[str, int] = defaultdict(int)
+    for entry in entries:
+        caps = entry.get("capabilities") or {}
+        seen_tokens = _tokens(entry.get("name") or "")
+        for tool in caps.get("provides_tools") or []:
+            seen_tokens |= _tokens(str(tool).replace("_", " "))
+        for token in seen_tokens:
+            df[token] += 1
+    total = max(1, len(entries))
+
+    # A token shared by more than ~2% of the catalog is vocabulary, not identity ("watch", "check",
+    # "price", "report"). Relative so it holds on a 4-entry test catalog and on 1,063 real ones.
+    common = max(1, int(total * 0.02))
+
+    def strong(token: str) -> bool:
+        return df.get(token, 0) <= common
+
+    scored = []
+    for entry in entries:
+        caps = entry.get("capabilities") or {}
+        theirs = [str(tool) for tool in (caps.get("provides_tools") or [])]
+        their_names = {tool.lower() for tool in theirs}
+        their_tokens = set()
+        for tool in theirs:
+            their_tokens |= _tokens(tool.replace("_", " "))
+        entry_name = _tokens(entry.get("name") or "")
+        entry_desc = _tokens(entry.get("description") or "")
+
+        tool_exact = our_tool_names & their_names
+        tool_shared = our_tool_tokens & their_tokens
+        name_shared = our_name & entry_name
+        desc_shared = our_desc & entry_desc
+
+        # Prose is never evidence on its own: every catalog description is wordy, so shared rare
+        # words are noise. A match must be anchored in a tool name or the plugin's own name, and
+        # description overlap can only nudge a score, capped at one point.
+        strong_names = {token for token in name_shared if strong(token)}
+        strong_tools = {token for token in (tool_shared - tool_exact) if strong(token)}
+        strong_desc = {token for token in desc_shared if strong(token)}
+        anchored = bool(tool_exact or strong_names or strong_tools)
+        score = (3.0 * min(2, len(tool_exact))
+                 + 1.2 * min(2, len(strong_tools))
+                 + 1.5 * min(2, len(strong_names))
+                 + 0.4 * min(2, len(strong_desc)))
+        if not anchored:
+            score = min(score, 1.4)          # never reaches the "similar" line on prose alone
+        if score < 1.2:
+            continue
+        # Cite only the evidence that scored. Listing a token the scorer ignored ("watch") reads
+        # like the match is stronger than it is.
+        why = []
+        if tool_exact:
+            why.append("same tool name: " + ", ".join(sorted(tool_exact)[:3]))
+        if strong_tools:
+            why.append("tool names share: " + ", ".join(sorted(strong_tools)[:3]))
+        if strong_names:
+            why.append("name shares: " + ", ".join(sorted(strong_names)[:3]))
+        if strong_desc and not tool_exact:
+            why.append("description shares: " + ", ".join(sorted(strong_desc)[:4]))
+        scored.append({
+            "name": entry.get("name") or "",
+            "repo": entry.get("repo") or "",
+            "description": (entry.get("description") or "")[:140],
+            "score": round(score, 1),
+            "why": why,
+        })
+
+    scored.sort(key=lambda row: (-row["score"], row["name"]))
+    top = scored[:limit]
+    best = top[0]["score"] if top else 0.0
+    if best >= 5.0:
+        verdict = "duplicate"
+    elif best >= 2.5:
+        verdict = "similar"
+    elif top:
+        verdict = "possible"
+    else:
+        verdict = "nothing"
+    return {"checked": len(entries), "verdict": verdict, "matches": top,
+            "source": payload.get("source"), "age_hours": payload.get("age_hours")}
+
+
 def gate_index(entries: Iterable[dict]) -> Tuple[Dict[str, set], Dict[str, dict]]:
     """``identifier -> {plugin names}`` from entry name, provides_tools and repo basename only."""
     index: Dict[str, set] = defaultdict(set)

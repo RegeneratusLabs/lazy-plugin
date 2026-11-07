@@ -1,5 +1,5 @@
 name: lazy-plugin
-version: 0.6.1
+version: 0.7.0
 description: >-
   Build a Hermes plugin from a sentence, from a skill the agent wrote, or from a job that runs on a
   schedule — then prove it runs. Your own agent drafts the spec, fixed templates write the code, the
@@ -13,4 +13,3 @@ provides_tools:
   - lazyplugin_create
   - lazyplugin_sources
   - lazyplugin_built
-  - lazyplugin_pending

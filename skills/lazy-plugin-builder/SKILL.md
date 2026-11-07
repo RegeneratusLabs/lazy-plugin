@@ -8,13 +8,11 @@ description: "Use when building or changing a Hermes plugin: spec, templates, va
 You are the craftsperson the Lazy Plugin page dispatches to. Build a *plugin*, not a prompt, and
 never claim it works without the validator saying so.
 
-## First, check the queue
+## First, read the request
 
-A build from the page usually arrives here as a turn, so the description is the user message you
-already have. Only when the surface has no chat to hand a turn to (a browser tab, a phone) does the
-page fall back to writing the request into `$HERMES_HOME/lazy-plugin/requests/` — if the user says
-they queued one, call `lazyplugin_pending` first and build what is listed. When a request names no
-URL, path or command, ask that one question instead of building a tool that does nothing.
+A build arrives here as a turn, so the request is the user message you already have — there is no
+queue to drain. When it names no URL, path or command, ask that one question instead of building a
+tool that does nothing.
 
 The page dispatches whatever lands itself, so do not claim success on your own word: end with the
 name, the validate line and the dispatch line, and let the verdict speak.

@@ -20,6 +20,7 @@ key is absent — no point spending a paid request to learn a variable is unset.
 from __future__ import annotations
 
 import importlib.util
+import datetime
 import inspect
 import json
 import os
@@ -34,21 +35,50 @@ MAX_SECONDS = 25.0
 
 # A sample value per parameter, so a handler gets called the way a user would call it.
 _SAMPLES = {
-    "query": "cat",
-    "q": "cat",
-    "search": "cat",
-    "term": "cat",
-    "text": "cat",
+    # shape matters: a date sent as "test" earns a 404 from a real API and the receipt blames the
+    # far end for our own sample value
+    "date": datetime.date.today().isoformat(),
+    "start_date": datetime.date.today().isoformat(),
+    "end_date": (datetime.date.today() + datetime.timedelta(days=7)).isoformat(),
+    "since": datetime.date.today().isoformat(),
+    "until": (datetime.date.today() + datetime.timedelta(days=7)).isoformat(),
+    "day": datetime.date.today().isoformat(),
+    "month": datetime.date.today().month,
+    "year": datetime.date.today().year,
+    "domain": "example.com",
+    "host": "example.com",
+    "hostname": "example.com",
+    "url": "https://example.com",
+    "endpoint": "https://example.com",
+    "email": "smoke@example.com",
+    "city": "Brisbane",
+    "country": "AU",
+    "country_code": "AU",
+    "currency": "AUD",
+    "base": "AUD",
+    "quote": "USD",
+    "symbol": "AUDUSD",
+    "ticker": "BHP",
+    "coin": "bitcoin",
+    "pair": "BTCUSDT",
+    "postcode": "4551",
+    "zip": "4551",
+    "query": "cat nip",
+    "q": "cat nip",
+    "search": "cat nip",
+    "term": "cat nip",
+    "text": "cat nip",
+    "id": "1",
+    "slug": "smoke",
     "limit": 3,
     "count": 3,
     "max": 3,
     "max_price": 100,
     "price": 100,
     "threshold": 100,
+    "budget": 100,
     "latitude": -26.65,
     "longitude": 153.07,
-    "city": "Brisbane",
-    "url": "https://example.com",
     "path": "~/smoke.txt",
     "name": "smoke",
 }
@@ -359,8 +389,12 @@ def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
         report["notes"].append("no tools registered at all")
     elif all(status == "works" for status in statuses):
         report["verdict"] = "works"
-    elif "broken" in statuses or "scaffold" in statuses:
+    elif "broken" in statuses:
         report["verdict"] = "broken"
+    elif "scaffold" in statuses:
+        # A handler nobody wrote is unfinished work, not a failure to load. Grading it "broken" made
+        # a green validation line sit above a red receipt, which reads as a lie.
+        report["verdict"] = "scaffold"
     elif "needs-key" in statuses:
         report["verdict"] = "needs-key"
     elif "upstream" in statuses:
@@ -383,11 +417,14 @@ def headline(report: dict) -> str:
     if verdict == "upstream":
         detail = "; ".join(row["detail"] for row in report["tools"] if row["status"] == "upstream")
         return f"our side works, the far end turned us away: {detail}"
+    if verdict == "scaffold":
+        stub = next((row for row in report["tools"] if row["status"] == "scaffold"), None)
+        return f"half-built — nothing was ever written in {stub['tool'] if stub else 'it'}"
     if verdict == "broken":
         first = next((row for row in report["tools"] if row["status"] in ("broken", "scaffold")), None)
         note = report["notes"][0] if report.get("notes") else (first or {}).get("detail", "")
         if first and first.get("status") == "scaffold":
-            return f"broken: nothing was ever written in {first['tool']}"
+            return f"half-built — nothing was ever written in {first['tool']}"
         return f"broken: {note}" if note else "broken"
     return "not tried out"
 

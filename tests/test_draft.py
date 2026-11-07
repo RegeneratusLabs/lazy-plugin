@@ -113,3 +113,51 @@ def test_context_is_passed_through(creator):
 
     creator.draft_spec("turn this skill into a plugin", Capture(), context="SKILL.md says: do X then Y")
     assert "SKILL.md says" in seen["payload"]
+
+
+DEAD_SPEC_TEXT = """{"name": "catnip-deals", "title": "Catnip Deals",
+ "description": "Find catnip deals across the big pet retailers and report the cheapest one.",
+ "category": "tools", "hooks": [],
+ "tools": [{"name": "find_deals", "description": "Search the deals page.",
+            "kind": "http", "params": {}, "target": "www.petbarn.com.au",
+            "behaviour": "GET the deals page."}]}"""
+
+
+class RepairingLlm:
+    """Refuses once with a scheme-less target, then fixes it when told why."""
+
+    def __init__(self):
+        self.calls = []
+
+    def complete_structured(self, **kwargs):
+        self.calls.append("structured")
+        return Result(DEAD_SPEC_TEXT)
+
+    def complete(self, **kwargs):
+        self.calls.append("repair")
+        return Result(SPEC_TEXT)
+
+
+class StubbornLlm(RepairingLlm):
+    def complete(self, **kwargs):
+        self.calls.append("repair")
+        return Result(DEAD_SPEC_TEXT)
+
+
+def test_a_refused_spec_gets_exactly_one_repair_pass(creator):
+    """The refusal lines are the best prompt we have: hand them back once before giving up."""
+    llm = RepairingLlm()
+    out = creator.draft_spec("find catnip deals on the big retailer sites", llm)
+    assert out["ok"] is True, out
+    assert out["meta"]["repaired"]["fixed"] is True
+    assert llm.calls == ["structured", "repair"]
+    assert out["spec"]["tools"][0]["request"]["url"].startswith("https://")
+
+
+def test_a_stubborn_model_is_refused_after_one_retry(creator, tmp_path):
+    llm = StubbornLlm()
+    out = creator.draft_spec("find catnip deals on the big retailer sites", llm)
+    assert out["ok"] is False and out["stage"] == "spec"
+    assert out["meta"]["repaired"]["fixed"] is False
+    assert llm.calls == ["structured", "repair"]      # one retry, never a loop
+    assert not (tmp_path / "created").exists()
