@@ -2,6 +2,6 @@
   "name": "lazy-plugin",
   "label": "Lazy Plugin",
   "icon": "Wand2",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "api": "plugin_api.py"
 }

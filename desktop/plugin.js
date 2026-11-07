@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'lp-20'
+const BUILD = 'lp-21'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -88,6 +88,22 @@ const CC_STYLE = `
   animation: cc-pulse 1.3s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .cc-dot { animation: none; opacity: .8; } }
 .cc-build-hint { font-family: ${CC.mono}; font-size: .56rem; color: ${CC.muted}; }
+.cc-thread { margin-top: 11px; border: 1px solid var(--cc-hair); border-left: 2px solid ${CC.rule};
+  background: color-mix(in srgb, ${CC.panel} 72%, transparent); padding: 8px 10px 9px; }
+.cc-thread-head { display: flex; align-items: center; gap: 8px; font-family: ${CC.mono};
+  font-size: .6rem; color: ${CC.muted}; }
+.cc-thread-log { margin-top: 7px; display: flex; flex-direction: column; gap: 2px; max-height: 9rem;
+  overflow-y: auto; }
+.cc-thread-line { display: flex; gap: 8px; font-family: ${CC.mono}; font-size: .6rem; line-height: 1.45; }
+.cc-thread-label { color: ${CC.paper}; flex: 0 0 auto; }
+.cc-thread-delta .cc-thread-label { color: ${CC.muted}; font-style: italic; }
+.cc-thread-fail .cc-thread-label { color: ${CC.fail}; }
+.cc-thread-text { color: ${CC.muted}; }
+.cc-thread-quiet { margin-top: 7px; font-family: ${CC.mono}; font-size: .6rem; color: ${CC.muted};
+  opacity: .75; }
+.cc-link { background: none; border: 0; padding: 0; margin-left: auto; cursor: pointer;
+  font-family: ${CC.mono}; font-size: .6rem; color: ${CC.accent}; }
+.cc-link:hover { color: ${CC.paper}; }
 
 .cc-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 760px) { .cc-tiles { grid-template-columns: minmax(0, 1fr); } }
@@ -305,7 +321,7 @@ function editPrompt(name, request) {
 // The gateway RPC the desktop app itself uses to start a turn: `session.create` mints a real
 // runtime id, then `prompt.submit { session_id, text }` writes the user row and starts the turn.
 // This needs no mounted composer and no focus, so it works from a plugin page.
-async function submitToChat(prompt) {
+async function submitToChat(prompt, options = {}) {
   const request = host && host.request
   if (typeof request !== 'function') return { ok: false, stage: 'host.request is missing' }
   const profileAtom = host && host.state && host.state.profile
@@ -333,6 +349,12 @@ async function submitToChat(prompt) {
   } catch (err) {
     return { ok: false, stage: 'prompt.submit failed: ' + String(err && err.message ? err.message : err) }
   }
+  if (options.stay) {
+    // The build runs in its own session either way; this page watches it through gateway events and
+    // fills the tile in place. Jumping to the session route is what used to happen — and it threw
+    // away the page the person was working on.
+    return { ok: true, session: stored, runtime: sessionId, opened: false, stayed: true }
+  }
   let opened = false
   try {
     if (host.openSession) {
@@ -344,7 +366,29 @@ async function submitToChat(prompt) {
     // No open verb on this host: fall back to the stored session's route so the turn is visible.
     try { if (host.navigate) { host.navigate(`/session/${encodeURIComponent(stored)}`); opened = true } } catch (err) { opened = false }
   }
-  return { ok: true, session: stored, opened }
+  return { ok: true, session: stored, runtime: sessionId, opened }
+}
+
+// A gateway event, said in one line. Frames are `{type, session_id, payload}`; anything we do not
+// recognise is dropped rather than guessed at, so a gateway that adds events does not pollute the log.
+const DELTA_TEXT = { 'thinking.delta': 'thinking', 'reasoning.delta': 'thinking' }
+
+function eventLine(type, payload) {
+  const body = payload || {}
+  const clip = text => String(text || '').replace(/\s+/g, ' ').trim().slice(0, 160)
+  if (DELTA_TEXT[type]) {
+    const text = clip(body.text)
+    return text ? { kind: 'delta', label: DELTA_TEXT[type], text } : null
+  }
+  switch (type) {
+    case 'message.start': return { kind: 'mark', label: 'turn started', text: '' }
+    case 'tool.generating': return { kind: 'mark', label: `drafting ${clip(body.name) || 'a tool'}`, text: '' }
+    case 'tool.start': return { kind: 'mark', label: `→ ${clip(body.name) || 'tool'}`, text: clip(body.preview) }
+    case 'tool.complete': return { kind: 'mark', label: `✓ ${clip(body.name) || 'tool'}`, text: '' }
+    case 'message.complete': return { kind: 'mark', label: 'turn finished', text: clip(body.text) }
+    case 'error': return { kind: 'fail', label: 'the turn erred', text: clip(body.message || body.error) }
+    default: return null
+  }
 }
 
 // What the page remembers across navigation. The build is a backend turn, so leaving this page and
@@ -776,6 +820,56 @@ function CreatorPanel() {
   const [elapsed, setElapsed] = useState(0)
   const [stageAt, setStageAt] = useState(0)
   const [latch, setLatch] = useState(CreatorPanel.__building)
+  const [thread, setThread] = useState([])
+  const [silent, setSilent] = useState(false)
+
+  // Watch the build's own turn through gateway events, so the page can show the work instead of
+  // sending you to another route. Frames arrive for every session; only ours is kept.
+  useEffect(() => {
+    const subscribe = host && host.onEvent
+    if (typeof subscribe !== 'function') return undefined
+    let lastDeltaAt = 0
+    const keep = line => setThread(prev => {
+      const next = line.kind === 'delta' && prev.length && prev[prev.length - 1].kind === 'delta'
+        ? [...prev.slice(0, -1), line]          // token deltas replace, they do not accumulate
+        : [...prev, line]
+      return next.slice(-7)
+    })
+    const dispose = subscribe('*', event => {
+      const watch = CreatorPanel.__watch
+      if (!watch) return
+      const frame = (event && event.params) || event || {}
+      const sid = frame.session_id || (frame.params && frame.params.session_id)
+      if (sid && watch.runtime && sid !== watch.runtime) return
+      const type = frame.type || (frame.params && frame.params.type)
+      if (!type) return
+      const payload = frame.payload || (frame.params && frame.params.payload) || {}
+      setSilent(false)
+      if (DELTA_TEXT[type]) {
+        const now = Date.now()
+        if (now - lastDeltaAt < 180) return     // keep the log readable at token speed
+        lastDeltaAt = now
+      }
+      const line = eventLine(type, payload)
+      if (line) keep(line)
+      if (type === 'message.complete') {
+        CreatorPanel.__watch = null
+        setStage('turn finished — waiting for the tile')
+        pollForTile()
+      }
+    })
+    return () => { try { dispose && dispose() } catch (err) { /* socket already gone */ } }
+  }, [])
+
+  // A build that goes quiet says so, rather than spinning forever.
+  useEffect(() => {
+    if (!busy) { setSilent(false); return undefined }
+    const timer = setInterval(() => {
+      const watch = CreatorPanel.__watch
+      if (watch && Date.now() - watch.at > 90000) setSilent(true)
+    }, 15000)
+    return () => clearInterval(timer)
+  }, [busy])
 
   // Coming back to the page: pick the running build up where it was left.
   useEffect(() => {
@@ -877,10 +971,12 @@ function CreatorPanel() {
         })
       })
       .catch(() => { CreatorPanel.__seen = [] })
-      .then(() => submitToChat(chatPrompt(payload)))
+      .then(() => submitToChat(chatPrompt(payload), { stay: true }))
       .then(result => {
         if (result && result.ok) {
-          setStage('your agent is on it in the chat — this card fills in once it passes its try-out')
+          CreatorPanel.__watch = { runtime: result.runtime || result.session, session: result.session, at: Date.now() }
+          setThread([])
+          setStage('your agent is working — stay here, this card fills in when it lands')
           setStageAt(Date.now() / 1000)
           pollForTile()
           return
@@ -1019,23 +1115,7 @@ function CreatorPanel() {
           sourceName
             ? jsx('span', { className: 'cc-note', children: `from ${kind}: ${sourceName}` })
             : null,
-          busy
-            ? jsxs('span', {
-                className: 'cc-build-status',
-                children: [
-                  jsx('span', { className: 'cc-dot' }),
-                  jsx('span', {
-                    children: `${stage || 'starting…'}${elapsed ? ` · ${elapsed}s` : ''}`
-                  })
-                ]
-              })
-            : null,
-          busy
-            ? jsx('span', {
-                className: 'cc-build-hint',
-                children: 'watch the chat pane — this page lights up when the tile lands'
-              })
-            : null,
+
           latch && !busy
             ? jsx('span', {
                 className: 'cc-note',
@@ -1047,6 +1127,46 @@ function CreatorPanel() {
             : null,
         ]
       }),
+      busy
+        ? jsxs('div', {
+            className: 'cc-thread',
+            children: [
+              jsxs('div', {
+                className: 'cc-thread-head',
+                children: [
+                  jsx('span', { className: 'cc-dot' }),
+                  jsx('span', { children: `${stage || 'starting…'}${elapsed ? ` · ${elapsed}s` : ''}` }),
+                  jsx('button', {
+                    className: 'cc-link',
+                    onClick: () => { try { host.navigate(`/session/${encodeURIComponent((CreatorPanel.__watch && CreatorPanel.__watch.session) || '')}`) } catch (err) { /* no router */ } },
+                    children: 'watch in chat →'
+                  })
+                ]
+              }),
+              thread.length
+                ? jsxs('div', {
+                    className: 'cc-thread-log',
+                    children: thread.map((line, index) =>
+                      jsxs('div', {
+                        className: 'cc-thread-line'
+                          + (line.kind === 'delta' ? ' cc-thread-delta' : '')
+                          + (line.kind === 'fail' ? ' cc-thread-fail' : ''),
+                        children: [
+                          jsx('span', { className: 'cc-thread-label', children: line.label }),
+                          line.text ? jsx('span', { className: 'cc-thread-text', children: line.text }) : null
+                        ]
+                      }, `${index}-${line.label}`))
+                  })
+                : jsx('div', { className: 'cc-thread-quiet', children: 'waiting for the first event…' }),
+              silent
+                ? jsx('div', {
+                    className: 'cc-note',
+                    children: 'quiet for a while — the turn is still open. `watch in chat` has the transcript.'
+                  })
+                : null
+            ]
+          })
+        : null,
       error
         ? jsxs('div', {
             className: 'cc-error',

@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 *.db
 catalog-cache.json
+
+# trailer renders and frame dumps are build output, not source
+brand-drafts/trailer/out/
+brand-drafts/trailer/**/frames*/
