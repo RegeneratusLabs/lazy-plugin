@@ -18,7 +18,7 @@ from pathlib import Path
 from PIL import Image, ImageFilter, ImageOps
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = Path.home() / ".hermes/images/upload_ct1iv9bp.jpg"
+SOURCE = Path.home() / ".hermes/images/upload__h8o0zlh.jpg"      # 16:9 plate, no padding needed
 OUT = ROOT / "assets/background.png"
 
 # The page's paper/ink, from docs/DESIGN.md. The drawing is tinted with the accent, not white, so it
@@ -31,7 +31,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--wash", type=float, default=0.30, help="max alpha of the drawing (0-1)")
     ap.add_argument("--size", type=int, default=900, help="square edge in pixels")
-    ap.add_argument("--height", type=int, default=760, help="height of the wide canvas the plate sits on")
+    ap.add_argument("--width", type=int, default=1400, help="width for an already-wide source")
+    ap.add_argument("--height", type=int, default=760, help="height of the wide canvas a square plate sits on")
     ap.add_argument("--gamma", type=float, default=1.15, help=">1 keeps the mid-tones darker")
     ap.add_argument("--colors", type=int, default=32, help="palette size; fewer = smaller data URI")
     ap.add_argument("--blur", type=float, default=0.7, help="soften hatching before quantising")
@@ -64,7 +65,11 @@ def main() -> int:
 
     art = rgb.convert("RGBA")
     art.putalpha(alpha)
-    art = art.resize((args.size, args.size), Image.Resampling.LANCZOS)
+    if src.width / src.height >= 1.4:
+        art = art.resize((args.width, int(round(args.width * art.height / art.width))),
+                         Image.Resampling.LANCZOS)
+    else:
+        art = art.resize((args.size, args.size), Image.Resampling.LANCZOS)
 
     # The page's own ink is the ground: flattening the drawing onto it means the backdrop is opaque,
     # needs no blend mode, and quantises to a palette (a fraction of the bytes — the plugin inlines it).
@@ -73,14 +78,19 @@ def main() -> int:
     if args.blur:
         flat = flat.filter(ImageFilter.GaussianBlur(args.blur))
 
-    # A square plate under `background-size: cover` gets cropped to a snout on a wide window. Pad it
-    # onto a wide ink canvas instead, so `cover` shows the whole drawing framed by its own ground.
-    plate_h = args.height
-    plate_w = int(round(plate_h * flat.width / flat.height))
-    plate = flat.resize((plate_w, plate_h), Image.Resampling.LANCZOS)
-    canvas = Image.new("RGB", (int(round(plate_h * 16 / 9)), plate_h), (27, 15, 38))
-    canvas.paste(plate, ((canvas.width - plate_w) // 2, 0))
-    flat = canvas
+    # A square plate under `background-size: cover` gets cropped to a snout on a wide window. A wide
+    # source needs no help; anything squarer than 1.4 gets padded onto a 16:9 ink canvas instead.
+    if flat.width / flat.height >= 1.4:
+        flat = flat.resize((args.width, int(round(args.width * flat.height / flat.width))),
+                           Image.Resampling.LANCZOS)
+        plate = flat
+    else:
+        plate_h = args.height
+        plate_w = int(round(plate_h * flat.width / flat.height))
+        plate = flat.resize((plate_w, plate_h), Image.Resampling.LANCZOS)
+        canvas = Image.new("RGB", (int(round(plate_h * 16 / 9)), plate_h), (27, 15, 38))
+        canvas.paste(plate, ((canvas.width - plate_w) // 2, 0))
+        flat = canvas
     flat = flat.quantize(colors=args.colors, method=Image.Quantize.MEDIANCUT)
     flat.save(OUT, "PNG", optimize=True)
     print(f"{OUT.relative_to(ROOT)}  {OUT.stat().st_size / 1024:.0f} KB  {art.size[0]}x{art.size[1]}  wash={args.wash}")
