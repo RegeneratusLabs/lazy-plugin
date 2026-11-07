@@ -221,8 +221,17 @@ def _created() -> dict:
                              "checked": stored.get("checked"), "seconds": stored.get("seconds")}
                 except Exception:
                     smoke = {"verdict": "unchecked", "headline": "smoke report unreadable"}
+            try:
+                secrets = _secrets_mod().scan_bundle(child)
+                secrets_row = {"ok": bool(secrets.get("ok")),
+                               "count": len(secrets.get("findings") or []),
+                               "line": (_secrets_mod().describe(secrets.get("findings") or [])
+                                        if not secrets.get("ok") else "")}
+            except Exception as exc:
+                secrets_row = {"ok": None, "count": 0, "line": f"scan unavailable: {type(exc).__name__}"}
             rows.append({
                 "name": name,
+                "secrets": secrets_row,
                 "smoke": smoke,
                 "title": str(manifest.get("title") or name.replace("-", " ").replace("_", " ").title()),
                 "description": " ".join(str(manifest.get("description") or "").split()),
@@ -239,6 +248,14 @@ def _created() -> dict:
             })
     _write_validation_cache(core, cache)
     return {"ok": True, "created": rows, "outbox": str(root)}
+
+
+def _secrets_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_secrets_api", _PLUGIN_DIR / "secretscan.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
 
 
 def _validation_cache(core) -> dict:

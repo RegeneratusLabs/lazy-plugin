@@ -103,7 +103,7 @@ def test_publish_pins_a_real_commit_and_writes_the_entry(publish, bundle):
     assert "  provides_hooks: []" in text
     assert run.has("gh repo create RegeneratusLabs/gpu-price-watch --public")
     assert out["install_command"] == "hermes plugins install gpu-price-watch"
-    assert [step["step"] for step in out["steps"]] == ["validate", "commit", "repo", "catalog entry"]
+    assert [step["step"] for step in out["steps"]] == ["secrets", "validate", "commit", "repo", "catalog entry"]
 
 
 def test_existing_repo_is_pushed_to_instead_of_recreated(publish, bundle):

@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'lp-18'
+const BUILD = 'lp-19'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -679,6 +679,19 @@ function Ledger({ out }) {
               : 'said no',
             sub: check.ok ? [] : [failLine]
           }, 'validate'),
+          out.secrets
+            ? jsx(LedgerRow, {
+                label: 'keys',
+                mark: out.secrets.ok === null ? '·' : (out.secrets.ok ? '✓' : '⚠'),
+                tone: out.secrets.ok === false ? 'warn' : '',
+                value: out.secrets.ok
+                  ? 'nothing key-shaped in the bundle'
+                  : (out.secrets.ok === null
+                      ? out.secrets.line
+                      : `${out.secrets.count} key-shaped ${out.secrets.count === 1 ? 'string' : 'strings'} — publish will refuse`),
+                sub: out.secrets.ok === false ? [out.secrets.line] : []
+              }, 'secrets')
+            : null,
           jsx(LedgerRow, {
             label: 'try-out',
             mark: dispatchOk ? '✓' : '✗',

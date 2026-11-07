@@ -256,6 +256,17 @@ def pr_body(name: str, owner: str, manifest: dict, bundle: Optional[Path] = None
     )
 
 
+def _secrets():
+    """Sibling module, loaded by path like every other one here (shared sys.modules, own globals)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "lazyplugin_secrets", Path(__file__).resolve().parent / "secretscan.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
+
+
 def install_local(bundle: Path, name: str, plugins_dir: Path,
                   validate: Callable[..., dict], run: Callable[..., str] = _run) -> dict:
     """Link the bundle into the profile. Re-validates first; never clobbers."""
@@ -274,9 +285,20 @@ def install_local(bundle: Path, name: str, plugins_dir: Path,
 
 def publish(bundle: Path, name: str, owner: str, manifest: dict,
             run: Callable[..., str] = _run, open_pull_request: bool = False) -> dict:
-    """validate -> repo -> SHA -> entry -> (optionally) PR. Stops at the first refusal."""
+    """secrets -> validate -> repo -> SHA -> entry -> (optionally) PR. Stops at the first refusal."""
     bundle = Path(bundle)
     steps: list[dict] = []
+
+    # A plugin for one person's own Hermes is their business; a public repo is permanent. This is the
+    # boundary, so it runs before the commit: nothing gets a remote until the bundle is clean.
+    secrets = _secrets().scan_bundle(bundle)
+    if not secrets["ok"]:
+        detail = [f"{f['kind']} at {f['where']}:{f['line']} ({f['shape']})" for f in secrets["findings"][:5]]
+        steps.append({"step": "secrets", "ok": False, "detail": detail})
+        return {"ok": False, "stage": "secrets", "steps": steps,
+                "error": _secrets().describe(secrets["findings"])}
+    steps.append({"step": "secrets", "ok": True,
+                  "detail": [f"{secrets['files_scanned']} files, nothing key-shaped"]})
 
     check = validate_package(bundle, run)
     steps.append({"step": "validate", "ok": check["ok"], "detail": check.get("failures") or ["passed"]})
