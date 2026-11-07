@@ -99,3 +99,51 @@ def test_only_declared_env_names_are_read(tmp_path):
 def test_no_declared_env_means_nothing_passed(tmp_path):
     (tmp_path / "plugin.yaml").write_text("name: x\n")
     assert SMOKE._declared_env(tmp_path) == []
+
+
+# --- install is reversible, and uninstall is narrow ----------------------------------------------
+
+def _linked(tmp_path, name="catnip-dealer-prices"):
+    """A plugins dir with a link into an outbox bundle, the way install_local makes one."""
+    home = tmp_path / "home"
+    bundle = home / "lazy-plugin" / "created" / name
+    bundle.mkdir(parents=True)
+    (bundle / "plugin.yaml").write_text("name: x\n")
+    plugins = home / "plugins"
+    plugins.mkdir()
+    (plugins / name).symlink_to(bundle, target_is_directory=True)
+    return plugins, bundle, name
+
+
+def test_uninstall_removes_the_link_it_made(tmp_path):
+    plugins, bundle, name = _linked(tmp_path)
+    out = PUBLISH.uninstall_local(name, plugins)
+    assert out["ok"] is True
+    assert not (plugins / name).exists()
+    assert bundle.is_dir(), "the bundle itself must survive"
+
+
+def test_uninstall_refuses_a_link_pointing_outside_the_outbox(tmp_path):
+    plugins, _bundle, name = _linked(tmp_path)
+    elsewhere = tmp_path / "someone-elses-plugin"
+    elsewhere.mkdir()
+    (plugins / name).unlink()
+    (plugins / name).symlink_to(elsewhere, target_is_directory=True)
+    out = PUBLISH.uninstall_local(name, plugins)
+    assert out["ok"] is False
+    assert "outside the outbox" in out["error"]
+    assert (plugins / name).is_symlink()
+
+
+def test_uninstall_refuses_a_real_directory(tmp_path):
+    plugins = tmp_path / "plugins"
+    (plugins / "hand-written").mkdir(parents=True)
+    out = PUBLISH.uninstall_local("hand-written", plugins)
+    assert out["ok"] is False
+    assert (plugins / "hand-written").is_dir()
+
+
+def test_uninstall_says_so_when_nothing_is_installed(tmp_path):
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+    assert PUBLISH.uninstall_local("ghost", plugins)["ok"] is False

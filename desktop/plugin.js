@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'lp-21'
+const BUILD = 'lp-22'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -255,6 +255,7 @@ function makeApi(ctx) {
     created: () => rest('/created'),
     job: id => rest(`/jobs/${id}`),
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
+    uninstall: name => rest('/created/uninstall', { method: 'POST', body: { name } }),
     publish: (name, openPr) => rest('/created/publish',
       { method: 'POST', body: { name, open_pr: !!openPr } }),
     remove: name => rest('/created/remove', { method: 'POST', body: { name } }),
@@ -648,6 +649,17 @@ function Ledger({ out }) {
   function act(kind, openPr = false) {
     setBusyAction(kind)
     setAction({ kind, stage: 'starting…' })
+    if (kind === 'uninstall') {
+      CreatorPanel.__api
+        .uninstall(out.name)
+        .then(result => {
+          setAction({ kind, ...(result || {}) })
+          if (result && result.ok && CreatorPanel.__onBuilt) CreatorPanel.__onBuilt()
+        })
+        .catch(err => setAction({ kind, ok: false, error: String(err && err.message ? err.message : err) }))
+        .finally(() => setBusyAction(''))
+      return
+    }
     if (kind === 'install') {
       CreatorPanel.__api
         .install(out.name)
@@ -768,10 +780,14 @@ function Ledger({ out }) {
         style: { opacity: 1, marginTop: '11px' },
         children: [
           jsx(TileButton, {
-            onClick: () => act('install'),
-            disabled: !check.ok || !!busyAction,
-            primary: !!check.ok,
-            children: busyAction === 'install' ? 'installing…' : 'install it'
+            onClick: () => act(out.installed ? 'uninstall' : 'install'),
+            disabled: (!check.ok && !out.installed) || !!busyAction,
+            primary: !!check.ok && !out.installed,
+            children: busyAction === 'install'
+              ? 'installing…'
+              : busyAction === 'uninstall'
+                ? 'uninstalling…'
+                : out.installed ? 'uninstall it' : 'install it'
           }),
           jsx(TileButton, {
             onClick: () => act('publish'),

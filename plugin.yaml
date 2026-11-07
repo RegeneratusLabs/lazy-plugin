@@ -1,5 +1,5 @@
 name: lazy-plugin
-version: 0.9.1
+version: 0.9.2
 description: >-
   A dashboard page in Hermes Desktop where you describe a plugin and watch it get built. Say what
   you want — or start from a skill the agent wrote, or a job that runs on a schedule — and your own

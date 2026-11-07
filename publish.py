@@ -295,6 +295,34 @@ def install_local(bundle: Path, name: str, plugins_dir: Path,
             "next": f"restart the gateway or run `hermes plugins enable {name}`"}
 
 
+def uninstall_local(name: str, plugins_dir: Path) -> dict:
+    """Remove the link install_local made — and nothing else.
+
+    Deliberately narrow: only a symlink, and only one whose target is a bundle in the outbox. A real
+    directory belongs to whoever wrote it, and a link pointing anywhere else is not ours to delete.
+    """
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return {"ok": False, "error": f"{name!r} is not a plugin name"}
+    target = Path(plugins_dir) / name
+    if not target.is_symlink():
+        if target.exists():
+            return {"ok": False,
+                    "error": f"{target} is a real directory, not a link this plugin made"}
+        return {"ok": False, "error": f"{name} is not installed"}
+    try:
+        resolved = target.resolve()
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot resolve {target}: {exc}"}
+    if resolved.parent.name != "created":
+        return {"ok": False,
+                "error": f"{name} links to {resolved}, which is outside the outbox — not touching it"}
+    try:
+        target.unlink()
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot remove {target}: {exc}"}
+    return {"ok": True, "uninstalled": str(target), "was": str(resolved), "bundle": str(resolved)}
+
+
 def publish(bundle: Path, name: str, owner: str, manifest: dict,
             run: Callable[..., str] = _run, open_pull_request: bool = False) -> dict:
     """secrets -> validate -> commit (SHA) -> repo -> entry -> (optionally) PR. Stops at the first refusal."""

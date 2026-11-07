@@ -7,6 +7,7 @@ chat and Desktop, so a synchronous catalog scan here would stall unrelated reque
 from __future__ import annotations
 
 import asyncio
+import subprocess
 import threading
 import time
 import uuid
@@ -357,6 +358,27 @@ def _write_created_file(name: str, path: str, content: str) -> dict:
             "validation": {"ok": bool(check.get("ok")),
                            "tail": [line for line in (check.get("tail") or []) if line.strip()][-4:]},
             "validated": bool(check.get("ok"))}
+
+
+@router.post("/created/uninstall")
+async def uninstall_created(payload: dict | None = None):
+    """Take the link back out of ~/.hermes/plugins. The bundle itself is left alone."""
+    payload = payload or {}
+    name = str(payload.get("name") or "").strip()
+    return await asyncio.to_thread(_uninstall_created, name)
+
+
+def _uninstall_created(name: str) -> dict:
+    core = _core()
+    out = _publish_mod().uninstall_local(name, core.hermes_home() / "plugins")
+    if out.get("ok"):
+        # A stale allow-list entry would point at a plugin that no longer exists.
+        try:
+            subprocess.run(["hermes", "plugins", "disable", name],
+                           capture_output=True, text=True, timeout=90)
+        except Exception:
+            pass
+    return out
 
 
 @router.post("/created/remove")
