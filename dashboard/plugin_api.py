@@ -289,25 +289,6 @@ def _bundle(name: str):
     return bundle if (bundle / "plugin.yaml").exists() else None
 
 
-@router.post("/create/answers")
-async def create_from_answers(payload: dict | None = None):
-    """Questionnaire path. Deterministic, so it works without any provider credential."""
-    payload = payload or {}
-    creator = _creator_mod()
-    drafted = creator.spec_from_answers(payload)
-    if not drafted.get("ok"):
-        return JSONResponse({"ok": False, "stage": drafted.get("stage"),
-                             "problems": drafted.get("problems") or []}, status_code=400)
-    return await asyncio.to_thread(creator.create, drafted["spec"])
-
-
-def _queue_mod():
-    spec = importlib.util.spec_from_file_location("lazyplugin_queue_api", _PLUGIN_DIR / "build_queue.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod
-
-
 @router.post("/agent/request")
 async def agent_request(payload: dict | None = None):
     """Hand a description to the agent. Returns the queued request, not a fake job id."""
@@ -444,42 +425,6 @@ async def agent_run_state(run_id: str):
     except OSError:
         pass
     return {"ok": True, **row, "tail": tail}
-
-
-@router.post("/create/prefill")
-async def prefill_answers(payload: dict | None = None):
-    """A sentence in, questionnaire answers out. No model, so it works on any surface."""
-    payload = payload or {}
-    idea = str(payload.get("idea") or "")
-    creator = _creator_mod()
-    return {"ok": True, "answers": creator.answers_from_idea(idea)}
-
-
-@router.get("/questions")
-async def questions():
-    """The questionnaire is data, so the page cannot drift from the spec it feeds."""
-    return {
-        "ok": True,
-        "questions": [
-            {"id": "purpose", "label": "What should it do?", "type": "text", "rows": 2,
-             "placeholder": "Watch GPU prices and tell me when one drops under $600",
-             "required": True},
-            {"id": "action", "label": "How does it do that?", "type": "select",
-             "options": ["fetch a URL", "read or write a file", "run a command", "just scaffold it"],
-             "default": "fetch a URL"},
-            {"id": "target", "label": "Where?", "type": "text",
-             "placeholder": "https://example.com/deals.json, ~/prices.json, or `ls -la`"},
-            {"id": "returns", "label": "What should it give back?", "type": "text",
-             "placeholder": "the cheapest matching listing, with its price and link"},
-            {"id": "trigger", "label": "When does it run?", "type": "select",
-             "options": ["when I ask", "after every session"], "default": "when I ask"},
-            {"id": "secret", "label": "Needs a key or login?", "type": "text",
-             "placeholder": "API_KEY (leave empty if not)"},
-            {"id": "category", "label": "Shelf", "type": "select",
-             "options": ["tools", "automation", "web", "memory", "voice", "models", "general"],
-             "default": "tools"},
-        ],
-    }
 
 
 @router.get("/created/files")

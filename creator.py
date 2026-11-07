@@ -125,6 +125,11 @@ def validate_spec(spec: dict) -> tuple[Optional[dict], list]:
         if kind == "http" and not clean_request["url"]:
             problems.append(f"{tool_name}: an http tool needs request.url — where does it fetch from?")
             continue
+        if kind == "http" and "://" not in clean_request["url"]:
+            problems.append(
+                f"{tool_name}: request.url must be absolute, with a scheme "
+                f"(https://{clean_request['url'].lstrip('/')}) — urllib refuses a bare host")
+            continue
         if kind == "http" and not clean_request["items_path"] and not clean_request["fields"]:
             pass  # a whole-document read is legitimate; no projection is not an error
         # A command with no argv, or a file tool with no path, renders a handler that can only ever
@@ -195,7 +200,11 @@ BODIES = {
                            "stdout": proc.stdout[-4000:], "stderr": proc.stderr[-2000:]}})
     except Exception as exc:
         return json.dumps({{"ok": False, "error": f"{{type(exc).__name__}}: {{exc}}"}})''',
-    "http": '''    base = {url!r}
+    "http": '''    # A caller-supplied url wins over the baked default: the tool declared a `url` parameter,
+    # so ignoring it makes the smoke test (and any caller) hit a URL nobody asked for.
+    base = params.get("url") or {url!r}
+    if base and "://" not in str(base):
+        base = "https://" + str(base).lstrip("/")
     mapping = {query!r}
     defaults = {defaults!r}
     limit_param = {limit_param!r}
@@ -602,118 +611,6 @@ def source_context(core, kind: str, name: str) -> str:
         except Exception:
             return ""
     return ""
-
-
-# keys are lowercase: the answer text comes from the page and is matched case-insensitively
-ANSWER_KINDS = {"fetch a url": "http", "read or write a file": "file",
-                "run a command": "command", "just scaffold it": "stub"}
-
-
-def answers_from_idea(idea: str) -> dict:
-    """Best-effort questionnaire answers from one sentence.
-
-    The web dashboard and mobile have no agent channel, so a description alone has nowhere to go.
-    Rather than dead-end, parse what is parseable and let the user fix the rest in the form.
-    """
-    text = _clean(idea, 300)
-    # "I want a lazy cat finder" names a plugin "lazy-cat-finder", not "i-want-a-lazy-cat"
-    text = re.sub(r"^(i want|i'd like|i would like|make me|build me|create|can you|please)\s+"
-                  r"(a|an|the|to)?\s*", "", text, flags=re.I) or text
-    low = text.lower()
-    url = re.search(r"https?://\S+", text)
-    if any(word in low for word in ("run ", "shell", "command", "systemctl", "git ")):
-        action = "run a command"
-    elif any(word in low for word in ("file", "csv", "json", "folder", "path", "save", "read ")):
-        action = "read or write a file"
-    elif url or any(word in low for word in ("fetch", "api", "web", "http", "download", "search",
-                                              "find", "picture", "image", "photo", "recommend")):
-        action = "fetch a URL"
-    else:
-        action = "just scaffold it"
-    return {
-        "purpose": text,
-        "action": action,
-        "target": url.group(0) if url else "",
-        "returns": "",
-        "trigger": "after every session" if "every" in low or "daily" in low or "each" in low else "when I ask",
-        "secret": "",
-        "category": "web" if action == "fetch a URL" else "tools",
-    }
-
-
-def spec_from_answers(answers: dict) -> dict:
-    """Six answers in, one spec out. Deterministic, offline, and it always validates.
-
-    The questionnaire exists because a blank text box produces plugins nobody needed: every
-    question here maps to a field the templates actually render.
-    """
-    purpose = _clean(answers.get("purpose") or answers.get("description") or "", 300)
-    if len(purpose) < 10:
-        return {"ok": False, "stage": "input",
-                "problems": ["say what it should do in one sentence"]}
-
-    target = _clean(answers.get("target") or "", 200)
-    returns = _clean(answers.get("returns") or "", 200)
-    trigger = str(answers.get("trigger") or "when I ask").strip().lower()
-    secret = _clean(answers.get("secret") or "", 60).upper().replace(" ", "_")
-    category = str(answers.get("category") or "tools").strip().lower()
-    kind = ANSWER_KINDS.get(str(answers.get("action") or "").strip().lower(), "stub")
-
-    # Name it from where the work happens, not from the whole sentence
-    hint = ""
-    if kind == "http" and target:
-        hint = re.sub(r"^https?://(www\\.)?", "", target).split("/")[0].split(".")[0]
-    elif kind == "file" and target:
-        hint = Path(target).stem
-    elif kind == "command" and target:
-        hint = target.split()[0]
-    name = (answers.get("name") or "").strip() or (
-        f"{hint}-{purpose.split()[0]}" if hint else " ".join(purpose.split()[:3]))
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:40].strip("-") or "new-plugin"
-    if kind != "stub":
-        # The hollow-plugin failure: without a real target and something to return, the build
-        # produces a tool that "calls an endpoint" with nothing to call.
-        missing = []
-        if not target:
-            missing.append({"http": "what URL should it fetch?",
-                            "file": "which file or folder should it read or write?",
-                            "command": "which command should it run?"}[kind])
-        if len(returns) < 4:
-            missing.append("what should it give back?")
-        if missing:
-            return {"ok": False, "stage": "input", "problems": missing}
-    verb = re.sub(r"[^a-z0-9]+", "_", purpose.lower().split()[0])[:18] or "run"
-    stem = slug.replace("-", "_")
-    tool_name = re.sub(r"_+", "_", stem if stem.startswith(verb) else f"{verb}_{stem}")[:40].strip("_") or "run_action"
-
-    params = {}
-    if kind == "http" and "{" not in target:
-        params["url"] = "endpoint to fetch, or leave empty to use the configured default"
-    if kind == "command":
-        params["args"] = "arguments passed to the configured command"
-    if returns:
-        params["expect"] = "what the caller wants back"
-
-    spec = {
-        "name": slug,
-        "title": " ".join(word.capitalize() for word in slug.replace("-", " ").split()),
-        "description": purpose,
-        "category": category,
-        "tools": [{
-            "name": tool_name,
-            "description": f"{purpose}" + (f" Returns {returns}." if returns else ""),
-            "kind": kind,
-            "behaviour": (f"Uses {target}. " if target else "") + (returns or ""),
-            "target": target,
-            **({"request": {"url": target}} if kind == "http" and target else {}),
-            "params": params,
-            **({"requires_env": [secret]} if secret else {}),
-        }],
-        "hooks": ["on_session_end"] if trigger.startswith("after every") else [],
-    }
-    clean, problems = validate_spec(spec)
-    return {"ok": clean is not None, "stage": "drafted" if clean else "spec",
-            "spec": clean, "problems": problems, "meta": {"lane": "questionnaire"}}
 
 
 def draft_spec(idea: str, llm, context: str = "") -> dict:

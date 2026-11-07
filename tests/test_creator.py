@@ -47,6 +47,37 @@ def test_spec_is_cleaned_and_carries_every_tool(creator):
     assert clean["hooks"] == ["on_session_end"]
 
 
+def test_an_http_tool_must_say_which_scheme(creator):
+    """A bare host bakes into the handler and every call dies with 'unknown url type'."""
+    spec = dict(GOOD, tools=[{"name": "find_thing", "description": "Fetch.", "kind": "http",
+                              "params": {}, "request": {"url": "www.example.com.au"},
+                              "behaviour": "GET the listing."}])
+    clean, problems = creator.validate_spec(spec)
+    assert clean is None
+    assert any("scheme" in problem for problem in problems)
+
+
+def test_a_declared_url_param_wins_over_the_baked_target(creator, tmp_path):
+    """The caller's url must reach urllib, not be shadowed by the default the spec baked in."""
+    clean, _ = creator.validate_spec({**GOOD, "hooks": [], "tools": [
+        {"name": "fetch_it", "description": "Fetch.", "kind": "http",
+         "params": {"url": "endpoint to fetch"},
+         "request": {"url": "https://baked.invalid/never"}, "behaviour": "GET it."}]})
+    files = creator.render(clean)
+    target = tmp_path / "bundle"
+    for rel, body in files.items():
+        path = target / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location("gen_fetch", target / "__init__.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = json.loads(module.handle_fetch_it({"url": "ftp://not-http.example"}))
+    assert "ftp://not-http.example" in json.dumps(result), result
+    assert "baked.invalid" not in json.dumps(result), result
+
+
 @pytest.mark.parametrize("kind,needle", [("command", "target"), ("file", "target")])
 def test_a_tool_with_no_target_is_refused_not_shipped_broken(creator, kind, needle):
     """A command with no argv / a file tool with no path validates but can never work."""

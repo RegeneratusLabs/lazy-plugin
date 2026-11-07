@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-11'
+const BUILD = 'cradle-12'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -239,15 +239,12 @@ function makeApi(ctx) {
     install: name => rest('/created/install', { method: 'POST', body: { name } }),
     publish: (name, openPr) => rest('/created/publish',
       { method: 'POST', body: { name, open_pr: !!openPr } }),
-    questions: () => rest('/questions'),
-    prefill: idea => rest('/create/prefill', { method: 'POST', body: { idea } }),
     request: payload => rest('/agent/request', { method: 'POST', body: payload }),
     run: payload => rest('/agent/run', { method: 'POST', body: payload }),
     runState: id => rest('/agent/run/' + id),
     pending: () => rest('/agent/pending'),
     remove: name => rest('/created/remove', { method: 'POST', body: { name } }),
     smokeTest: name => rest('/created/smoke', { method: 'POST', body: { name } }),
-    answers: payload => rest('/create/answers', { method: 'POST', body: payload }),
     files: name => rest(`/created/files?name=${encodeURIComponent(name)}`),
     readFile: (name, path) => rest(`/created/file?name=${encodeURIComponent(name)}&path=${encodeURIComponent(path)}`),
     saveFile: (name, path, content) => rest('/created/file', { method: 'POST', body: { name, path, content } }),
@@ -757,103 +754,6 @@ function Ledger({ out }) {
   })
 }
 
-function Questionnaire({ onResult, initial }) {
-  const [fields, setFields] = useState([])
-  const [answers, setAnswers] = useState({})
-  const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState('')
-
-  useEffect(() => {
-    let live = true
-    CreatorPanel.__api
-      .questions()
-      .then(payload => {
-        if (!live) return
-        const list = (payload && payload.questions) || []
-        setFields(list)
-        setAnswers(Object.fromEntries(list.map(q => [q.id, q.default || ''])))
-      })
-      .catch(err => setNote(String(err && err.message ? err.message : err)))
-    return () => { live = false }
-  }, [])
-
-  useEffect(() => {
-    if (initial && initial.purpose) setAnswers(prev => ({ ...prev, ...initial }))
-  }, [initial])
-
-  const ready = (answers.purpose || '').trim().length >= 10
-  const act = String(answers.action || '')
-  const doing = act === 'fetch a URL'
-    ? `fetch ${answers.target || '⚠ no URL yet'}`
-    : act === 'read or write a file'
-      ? `${answers.target ? 'read or write ' + answers.target : '⚠ no path yet'}`
-      : act === 'run a command'
-        ? `run ${answers.target || '⚠ no command yet'}`
-        : 'be a scaffold to fill in later'
-  const preview = ready
-    ? `It will ${doing}${answers.returns ? `, and give back ${answers.returns}` : ', and give nothing back ⚠'}` +
-      ` · ${String(answers.trigger || '').startsWith('after') ? 'after every session' : 'when you ask'}`
-    : ''
-
-  function submit() {
-    setBusy(true)
-    setNote('')
-    CreatorPanel.__api
-      .answers(answers)
-      .then(result => {
-        if (result && result.ok) {
-          setNote('')
-          if (onResult) onResult(result)
-          return
-        }
-        setNote(((result && result.problems) || []).join(' · ') || 'the answers did not make a plugin')
-      })
-      .catch(err => setNote(String(err && err.message ? err.message : err)))
-      .finally(() => setBusy(false))
-  }
-
-  function field(item) {
-    const value = answers[item.id] || ''
-    const set = next => setAnswers(prev => ({ ...prev, [item.id]: next }))
-    const shared = {
-      value,
-      onChange: event => set(event.target.value),
-      className: 'cc-area',
-      style: { padding: '5px 7px', fontSize: '.7rem' }
-    }
-    const wide = item.id === 'purpose'
-    return jsxs('div', {
-      className: 'cc-field',
-      style: wide ? { gridColumn: '1 / -1' } : undefined,
-      children: [
-        jsx('label', { className: 'cc-label', children: item.label }),
-        item.type === 'select'
-          ? jsx('select', { ...shared, children: (item.options || []).map(option => jsx('option', { value: option, children: option }, option)) })
-          : jsx('textarea', { ...shared, rows: wide ? 3 : (item.rows || 1), placeholder: item.placeholder || '' })
-      ]
-    }, item.id)
-  }
-
-  return jsxs('details', {
-    className: 'cc-details',
-    children: [
-      jsx('summary', { children: 'or answer seven questions · no model needed' }),
-      jsx('div', { className: 'cc-grid', style: { marginTop: '8px' }, children: fields.map(field) }),
-      jsxs('div', {
-        style: { display: 'flex', alignItems: 'center', gap: '9px', marginTop: '9px' },
-        children: [
-          jsx(TileButton, { onClick: submit, disabled: !ready || busy, primary: ready && !busy,
-            children: busy ? 'making it…' : 'make it' }),
-          jsx('span', { className: 'cc-note', children: note || (ready ? '' : 'start with what it should do') })
-        ]
-      }),
-      preview
-        ? jsx('div', { className: 'cc-preview', children: preview })
-        : null
-    ]
-  })
-}
-
 function CreatorPanel() {
   const [idea, setIdea] = useState('')
   const [mode, setMode] = useState('describe')
@@ -864,7 +764,6 @@ function CreatorPanel() {
   const [out, setOut] = useState(null)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
-  const [prefill, setPrefill] = useState(null)
   const [elapsed, setElapsed] = useState(0)
   const [stageAt, setStageAt] = useState(0)
   const [latch, setLatch] = useState(CreatorPanel.__building)
@@ -910,7 +809,6 @@ function CreatorPanel() {
     return () => { live = false }
   }, [])
 
-  CreatorPanel.__setPrefill = setPrefill
   CreatorPanel.__setIdea = setIdea
   const kind = mode === 'cron' ? 'cron' : 'skill'
   const options = kind === 'skill' ? sources.skills : sources.cron
@@ -1152,8 +1050,7 @@ function CreatorPanel() {
             ]
           })
         : null,
-      out ? jsx(Ledger, { out }) : null,
-      jsx(Questionnaire, { onResult: setOut, initial: prefill })
+      out ? jsx(Ledger, { out }) : null
     ]
   })
 }
@@ -1161,7 +1058,6 @@ function CreatorPanel() {
 CreatorPanel.__api = null
 CreatorPanel.__onBuilt = null
 CreatorPanel.__seen = []
-CreatorPanel.__setPrefill = null
 CreatorPanel.__setIdea = null
 CreatorPanel.__building = null
 
