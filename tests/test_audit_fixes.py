@@ -147,3 +147,24 @@ def test_uninstall_says_so_when_nothing_is_installed(tmp_path):
     plugins = tmp_path / "plugins"
     plugins.mkdir()
     assert PUBLISH.uninstall_local("ghost", plugins)["ok"] is False
+
+
+# --- the disclosure stays a disclosure, not a dump ------------------------------------------------
+
+def test_tokens_files_skips_working_dirs_and_caps(tmp_path):
+    bundle = tmp_path / "b"
+    (bundle / "desktop").mkdir(parents=True)
+    (bundle / "desktop" / "plugin.js").write_text("// page\n")
+    (bundle / "plugin.yaml").write_text("name: x\n")
+    (bundle / "brand-drafts" / "trailer" / "out").mkdir(parents=True)
+    (bundle / "brand-drafts" / "trailer" / "out" / "frames-0001.jpg").write_text("x")
+    names = PUBLISH.tokens_files(bundle)
+    assert "desktop/plugin.js" in names and "plugin.yaml" in names
+    assert not any(name.startswith("brand-drafts/") for name in names)
+
+    for i in range(12):
+        (bundle / "bulk").mkdir(exist_ok=True)
+        (bundle / "bulk" / f"f{i}.py").write_text("x")
+    capped = PUBLISH.tokens_files(bundle, limit=5)
+    assert len(capped) == 6
+    assert capped[-1].startswith("...and")

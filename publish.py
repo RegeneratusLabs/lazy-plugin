@@ -215,16 +215,18 @@ def tokens_network_line(bundle: Optional[Path]) -> str:
     return "none of its own"
 
 
-def tokens_files(bundle: Optional[Path]) -> list[str]:
-    """Every file a reviewer can open, not just the ones at the root.
+def tokens_files(bundle: Optional[Path], limit: int = 200) -> list[str]:
+    """The files a reviewer needs to open: the plugin's own surface, not every working file.
 
-    A disclosure that lists only top-level .py files hides desktop/plugin.js and dashboard/, which
-    are half of what this plugin is.
+    Listing only top-level .py files hid desktop/plugin.js and dashboard/, which are half of what this
+    plugin is. Listing literally everything produced a 757 KB PR body with 15,635 entries, because the
+    repo also carries design and trailer working files (brand-drafts/) that are not part of the
+    plugin. So: the plugin's surface, with a hard cap and an honest count of what was left out.
     """
     if bundle is None:
         return []
     root = Path(bundle)
-    skip = {".git", "__pycache__", ".venv", "node_modules", ".pytest_cache"}
+    skip = {".git", "__pycache__", ".venv", "node_modules", ".pytest_cache", "brand-drafts"}
     found = []
     for path in root.rglob("*"):
         if not path.is_file():
@@ -232,7 +234,10 @@ def tokens_files(bundle: Optional[Path]) -> list[str]:
         if set(path.relative_to(root).parts) & (skip | {CATALOG_DIR}) or path.name in (".gitignore", ".DS_Store"):
             continue
         found.append(str(path.relative_to(root)))
-    return sorted(found)
+    found = sorted(found)
+    if len(found) > limit:
+        return found[:limit] + [f"...and {len(found) - limit} more, listed with `git ls-files`"]
+    return found
 
 
 def pr_body(name: str, owner: str, manifest: dict, bundle: Optional[Path] = None) -> str:
