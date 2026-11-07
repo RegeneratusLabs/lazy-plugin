@@ -15,8 +15,6 @@ validated bundle into the profile and is the only step that changes the user's m
 
 from __future__ import annotations
 
-import json
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path

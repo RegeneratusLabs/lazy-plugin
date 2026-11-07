@@ -82,83 +82,9 @@ def test_install_rejects_an_unknown_name(api):
     assert api._install_created("nope")["ok"] is False
 
 
-def test_create_returns_a_job_and_reports_progress(api, monkeypatch):
-    """The model call outlives the request: POST hands back a job, the page polls it."""
+def test_job_status_rejects_an_unknown_id(api):
+    """The publish job door is /jobs/<id>; an id nobody started is gone, not a 500."""
     import asyncio
-    import time
-
-    seen = []
-
-    class Creator:
-        @staticmethod
-        def validate_plugin(path, timeout=180):
-            return {"ok": True, "failures": [], "tail": ["Validation passed."]}
-
-        @staticmethod
-        def source_context(core, kind, name):
-            seen.append((kind, name))
-            return "SKILL x"
-
-        @staticmethod
-        def draft_spec(idea, llm, context=""):
-            seen.append(("draft", context))
-            return {"ok": True, "stage": "drafted", "spec": {"name": "x"}, "meta": {"lane": "chat"}}
-
-        @staticmethod
-        def create(spec):
-            return {"ok": True, "stage": "written", "name": "x", "validation": {"ok": True, "tail": []}}
-
-    monkeypatch.setattr(api, "_creator_mod", lambda: Creator)
-    monkeypatch.setattr(api, "_find_ctx", lambda: (None, {}))
-
-    start = asyncio.run(api.create_plugin({"idea": "watch gpu prices", "source_kind": "skill",
-                                           "source_name": "chinese-marketplace-sourcing"}))
-    assert start["ok"] is True and start["job"]
-
-    state = {}
-    deadline = time.time() + 10
-    while time.time() < deadline:
-        state = asyncio.run(api.create_job(start["job"]))
-        if state.get("ok") is not None:
-            break
-        time.sleep(0.02)
-
-    assert state["stage"] == "done" and state["ok"] is True
-    assert state["result"]["validation"]["ok"] is True
-    assert ("skill", "chinese-marketplace-sourcing") in seen
+    assert asyncio.run(api.job_status("nope"))["stage"] == "gone"
 
 
-def test_job_thread_inherits_contextvars(api):
-    """The bug: a bare thread starts empty, so the profile scope is lost and secrets refuse."""
-    import contextvars
-    import time
-
-    probe = contextvars.ContextVar("probe", default="missing")
-    seen = {}
-    token = probe.set("inherited")
-    try:
-        api._start_job_thread(lambda: seen.update(value=probe.get()))
-        for _ in range(100):
-            if seen:
-                break
-            time.sleep(0.01)
-    finally:
-        probe.reset(token)
-    assert seen.get("value") == "inherited"
-
-
-def test_create_job_rejects_an_unknown_id(api):
-    import asyncio
-    assert asyncio.run(api.create_job("nope"))["stage"] == "gone"
-
-
-def test_share_writes_the_catalog_entry_and_a_tarball(api):
-    out = api._share_created("gpu-price-watch")
-    assert out["ok"] is True
-    entry = Path(out["catalog_entry"])
-    assert entry.exists() and entry.name == "gpu-price-watch.yaml"
-    body = entry.read_text()
-    assert '"version": "1.2.0"' in body
-    assert '"check_prices"' in body
-    assert Path(out["submission"]).exists()
-    assert out["tarball"] and Path(out["tarball"]).exists()

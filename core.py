@@ -12,7 +12,7 @@ import re
 import sqlite3
 import time
 import urllib.request
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 

@@ -14,7 +14,6 @@ import json
 import time
 import uuid
 from pathlib import Path
-from typing import Optional
 
 RETENTION_HOURS = 24
 

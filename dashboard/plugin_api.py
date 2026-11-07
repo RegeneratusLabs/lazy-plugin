@@ -7,14 +7,12 @@ chat and Desktop, so a synchronous catalog scan here would stall unrelated reque
 from __future__ import annotations
 
 import asyncio
-import subprocess
 import threading
 import time
 import uuid
 import importlib.util
 import json
 import re
-import sys
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -289,144 +287,6 @@ def _bundle(name: str):
     return bundle if (bundle / "plugin.yaml").exists() else None
 
 
-@router.post("/agent/request")
-async def agent_request(payload: dict | None = None):
-    """Hand a description to the agent. Returns the queued request, not a fake job id."""
-    payload = payload or {}
-    idea = str(payload.get("idea") or "").strip()
-    if len(idea) < 10 and str(payload.get("source_name") or "").strip():
-        idea = (f'Turns the {payload.get("source_kind") or "workflow"} '
-                f'"{payload.get("source_name")}" into a reusable plugin')
-    if len(idea) < 10:
-        return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
-                            status_code=400)
-    queue = _queue_mod()
-    home = _core().hermes_home()
-    request = queue.enqueue(home, idea, str(payload.get("source_kind") or ""),
-                            str(payload.get("source_name") or ""))
-    return {"ok": True, "queued": request, "prompt": queue.as_prompt([request]),
-            "why": "a page cannot start a turn; the agent picks this up and calls lazyplugin_create"}
-
-
-@router.get("/agent/pending")
-async def agent_pending():
-    queue = _queue_mod()
-    rows = queue.pending(_core().hermes_home())
-    return {"ok": True, "requests": rows, "prompt": queue.as_prompt(rows)}
-
-
-@router.post("/agent/done")
-async def agent_done(payload: dict | None = None):
-    payload = payload or {}
-    queue = _queue_mod()
-    return {"ok": queue.finish(_core().hermes_home(), str(payload.get("id") or ""))}
-
-
-_RUNS: dict[str, dict] = {}
-
-
-def _hermes_bin() -> str | None:
-    """The CLI the user runs. A one-shot turn inherits their profile, model and credentials."""
-    import os as _os
-    from shutil import which
-
-    for candidate in (
-        which("hermes"),
-        str(Path("/home/josh/.hermes/hermes-agent/.hermes/bin/hermes")),
-        _os.path.expanduser("~/.local/bin/hermes"),
-    ):
-        if candidate and Path(candidate).exists():
-            return candidate
-    return None
-
-
-def agent_prompt(idea: str, kind: str = "", name: str = "", context: str = "") -> str:
-    """The one-shot brief. With a source, the source goes in the prompt — the turn has no memory."""
-    if name and context:
-        return (
-            f"Turn the {kind} \"{name}\" into a Hermes plugin. Here it is:\n\n{context[:6000]}\n\n"
-            "Call lazyplugin_create exactly once with an idea that names the concrete endpoint, "
-            "command or file the plugin acts on, the parameters it takes and what it returns. "
-            "If that workflow has nothing a tool can fetch, read or run, ask me one question "
-            "instead of inventing one. Then state in one line what the validator and the smoke "
-            "test reported."
-        )
-    source = f' Build it from the {kind} "{name}".' if name else ""
-    return (
-        f"Use the lazyplugin_create tool once to build a plugin from this idea: {idea}.{source} "
-        "If the idea names nothing to fetch, read or write, or run, ask me one question instead "
-        "of building an empty tool. Then state in one line what the validator reported."
-    )
-
-
-@router.post("/agent/run")
-async def agent_run(payload: dict | None = None):
-    """Build by running one real turn of the user's own agent, as a subprocess.
-
-    A dashboard route has no turn, so it cannot resolve model credentials — but the CLI can, and
-    `hermes chat -q … --oneshot` is the same agent the user talks to, with their model. This is
-    what makes describe work in a browser, where there is no host SDK and no chat composer.
-    """
-    payload = payload or {}
-    idea = str(payload.get("idea") or "").strip()
-    if len(idea) < 10 and str(payload.get("source_name") or "").strip():
-        idea = (f'Turns the {payload.get("source_kind") or "workflow"} '
-                f'"{payload.get("source_name")}" into a reusable plugin')
-    if len(idea) < 10:
-        return JSONResponse({"ok": False, "problems": ["describe the plugin in a sentence"]},
-                            status_code=400)
-    binary = _hermes_bin()
-    if not binary:
-        return {"ok": False, "error": "the hermes CLI is not on this host"}
-
-    import os as _os
-    import subprocess as _sp
-    import threading as _th
-    import uuid as _uuid
-
-    home = _core().hermes_home()
-    runs = Path(home) / "lazy-plugin" / "runs"
-    runs.mkdir(parents=True, exist_ok=True)
-    run_id = _uuid.uuid4().hex[:10]
-    log = runs / f"{run_id}.log"
-    context = ""
-    if str(payload.get("source_name") or "").strip():
-        try:
-            context = _creator_mod().source_context(
-                _core(), str(payload.get("source_kind") or ""), str(payload.get("source_name") or ""))
-        except Exception:
-            context = ""
-    prompt = agent_prompt(idea, str(payload.get("source_kind") or ""),
-                          str(payload.get("source_name") or ""), context)
-    _RUNS[run_id] = {"run": run_id, "done": False, "log": str(log), "started": time.time()}
-
-    def work() -> None:
-        env = {**_os.environ, "HERMES_HOME": str(home), "PYTHONUNBUFFERED": "1"}
-        try:
-            with open(log, "wb") as handle:
-                proc = _sp.run([binary, "chat", "-q", prompt, "--oneshot"], stdout=handle,
-                               stderr=_sp.STDOUT, cwd=str(Path.home()), env=env, timeout=900)
-            _RUNS[run_id].update({"done": True, "code": proc.returncode})
-        except Exception as exc:  # the log is the only place a failure can be read
-            _RUNS[run_id].update({"done": True, "code": -1, "error": str(exc)})
-
-    _th.Thread(target=work, daemon=True).start()
-    return {"ok": True, "run": run_id, "log": str(log)}
-
-
-@router.get("/agent/run/{run_id}")
-async def agent_run_state(run_id: str):
-    row = _RUNS.get(run_id)
-    if not row:
-        return JSONResponse({"ok": False, "error": "unknown run"}, status_code=404)
-    tail = ""
-    try:
-        tail = Path(row["log"]).read_text(errors="replace")[-800:]
-    except OSError:
-        pass
-    return {"ok": True, **row, "tail": tail}
-
-
 @router.get("/created/files")
 async def created_files(name: str = ""):
     return await asyncio.to_thread(_created_files, name)
@@ -547,6 +407,38 @@ def _publish_mod():
     return mod
 
 
+JOBS: dict[str, dict] = {}
+JOB_TTL_SECONDS = 3600
+
+
+def _prune_jobs() -> None:
+    cutoff = time.time() - JOB_TTL_SECONDS
+    for key in [k for k, v in JOBS.items() if v.get("started", 0) < cutoff]:
+        JOBS.pop(key, None)
+
+
+def _start_job(target, *args) -> str:
+    """A thread that keeps this request's contextvars, so the profile scope rides along."""
+    import contextvars
+
+    job = uuid.uuid4().hex[:12]
+    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "stage_started": time.time(),
+                 "result": None, "error": None, "steps": [], "started": time.time()}
+    _prune_jobs()
+    context = contextvars.copy_context()
+    threading.Thread(target=context.run, args=(target, job, *args), daemon=True).start()
+    return job
+
+
+@router.get("/jobs/{job}")
+async def job_status(job: str):
+    """One in-flight publish, as the page polls it."""
+    entry = JOBS.get(job)
+    if entry is None:
+        return {"ok": False, "job": job, "error": "unknown or expired job", "stage": "gone"}
+    return dict(entry)
+
+
 @router.post("/created/publish")
 async def publish_created(payload: dict | None = None):
     """Push a generated plugin to a public repo, pin its SHA, and write the catalog entry."""
@@ -558,18 +450,25 @@ async def publish_created(payload: dict | None = None):
     if not name or not (bundle / "plugin.yaml").exists():
         return JSONResponse({"ok": False, "error": f"no generated plugin named {name!r}"},
                             status_code=404)
-    job = uuid.uuid4().hex[:12]
-    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "result": None, "error": None,
-                 "steps": [], "started": time.time()}
-    _start_job_thread(_run_publish, job, bundle, name, owner, open_pr)
+    job = _start_job(_publish_via_scope, bundle, name, owner, open_pr)
     return {"ok": True, "job": job, "stage": "starting"}
 
 
-def _run_publish(job: str, bundle, name: str, owner: str, open_pr: bool) -> None:
-    _scope_mod().run_in_scope(_publish_worker, JOBS[job], bundle, name, owner, open_pr)
+def _scope_mod():
+    spec = importlib.util.spec_from_file_location("lazyplugin_scope_api", _PLUGIN_DIR / "scope.py")
+    assert spec is not None and spec.loader is not None
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)  # type: ignore[union-attr]
+    return mod
 
 
-def _publish_worker(entry: dict, bundle, name: str, owner: str, open_pr: bool) -> None:
+def _publish_via_scope(job: str, bundle, name: str, owner: str, open_pr: bool) -> None:
+    # A bare thread starts with empty contextvars; this process serves several profiles.
+    _scope_mod().run_in_scope(_publish_worker, job, bundle, name, owner, open_pr)
+
+
+def _publish_worker(job: str, bundle, name: str, owner: str, open_pr: bool) -> None:
+    entry = JOBS[job]
     try:
         publish = _publish_mod()
         entry["stage"] = "checking the package"
@@ -585,203 +484,6 @@ def _publish_worker(entry: dict, bundle, name: str, owner: str, open_pr: bool) -
         entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
     finally:
         entry["finished"] = time.time()
-
-
-@router.post("/created/share")
-async def share_created(payload: dict | None = None):
-    """Write the marketplace entry, the PR steps and a tarball you can hand to anyone."""
-    payload = payload or {}
-    name = str(payload.get("name") or "").strip()
-    return await asyncio.to_thread(_share_created, name)
-
-
-def _share_created(name: str) -> dict:
-    core = _core()
-    bundle = core.state_dir() / "created" / name
-    if not name or not (bundle / "plugin.yaml").exists():
-        return {"ok": False, "error": f"no generated plugin named {name!r}"}
-    manifest = _creator_mod().read_manifest(bundle)
-
-    entry = {
-        "name": name,
-        "repo": "https://github.com/<you>/<repo>",
-        "sha": "<full 40-character commit sha>",
-        "version": str(manifest.get("version") or "0.1.0"),
-        "title": name.replace("-", " ").title(),
-        "description": str(manifest.get("description") or "")[:400],
-        "maintainer": "<your-github-handle>",
-        "tier": "community",
-        "category": "tools",
-        "docs_url": "https://github.com/<you>/<repo>#readme",
-        "capabilities": {
-            "provides_tools": manifest.get("provides_tools") or [],
-            "provides_hooks": manifest.get("provides_hooks") or [],
-            "provides_middleware": [],
-            "requires_env": manifest.get("requires_env") or [],
-        },
-        "requires_hermes": ">=0.21.6",
-    }
-    catalog_dir = bundle / "plugin-catalog"
-    catalog_dir.mkdir(exist_ok=True)
-    entry_path = catalog_dir / f"{name}.yaml"
-    entry_path.write_text(json.dumps(entry, indent=2) + "\n", encoding="utf-8")
-
-    submission = bundle / "SUBMISSION.md"
-    submission.write_text(
-        f"""# Sharing `{name}`
-
-## 1. Publish the repo
-
-```bash
-cd {bundle}
-git init -q && git add -A && git commit -qm 'Add {name} plugin'
-# create a public repo you own, then:
-git remote add origin <your repo url> && git push -u origin main
-git rev-parse HEAD    # paste this full 40-character sha into plugin-catalog/{name}.yaml
-```
-
-## 2. Validate
-
-```bash
-hermes plugins validate {bundle} --install-deps
-```
-
-## 3. Submit to the catalog
-
-- Fork https://github.com/NousResearch/hermes-agent
-- Add `plugin-catalog/{name}.yaml` (generated beside this file)
-- Open the PR. Human-merged by design: presence in the catalog is the trust signal.
-
-## 4. Or just hand it to someone
-
-```bash
-tar -czf {name}.tar.gz -C {bundle} .
-```
-
-Rules reviewers will check: exact SHA pin, declared capabilities matching what it registers,
-no self-updating code, owner-or-major-contributor submission.
-""", encoding="utf-8")
-
-    tarball = None
-    try:
-        # outside the bundle, or tar warns about the archive changing while it reads it
-        tarball = str(bundle.parent / f"{name}.tar.gz")
-        subprocess.run(["tar", "-czf", tarball, "-C", str(bundle), "."],
-                       check=True, capture_output=True, timeout=120)
-    except Exception:
-        tarball = None
-
-    return {"ok": True, "name": name, "dir": str(bundle),
-            "catalog_entry": str(entry_path), "submission": str(submission),
-            "tarball": tarball,
-            "files": [f"plugin-catalog/{name}.yaml", "SUBMISSION.md"] + ([f"{name}.tar.gz"] if tarball else [])}
-
-
-_KEY_UNREADABLE = ("this process cannot read the provider API key — restart the gateway "
-                   "(`hermes gateway " + "restart`) and try again")
-
-JOBS: dict[str, dict] = {}
-
-
-@router.post("/create")
-async def create_plugin(payload: dict | None = None):
-    """Start a build. Returns a job id — a model call plus validation outlives any HTTP request."""
-    payload = payload or {}
-    idea = str(payload.get("idea") or "").strip()
-    kind = str(payload.get("source_kind") or "").strip()
-    source = str(payload.get("source_name") or "").strip()
-    if not idea and source:
-        idea = f"Turn this {kind} into a plugin: {source}"
-    if len(idea) < 10:
-        return JSONResponse({"ok": False, "stage": "input",
-                             "problems": ["describe the plugin, or pick a skill or cron job"]},
-                            status_code=400)
-    job = uuid.uuid4().hex[:12]
-    JOBS[job] = {"job": job, "ok": None, "stage": "starting", "stage_started": time.time(),
-                 "result": None, "error": None, "started": time.time()}
-    _start_job_thread(_run_create, job, idea, kind, source)
-    return {"ok": True, "job": job, "stage": "starting"}
-
-
-def _start_job_thread(target, *args) -> None:
-    """A thread that keeps this request's contextvars, so the profile scope rides along."""
-    import contextvars
-
-    context = contextvars.copy_context()
-    threading.Thread(target=context.run, args=(target, *args), daemon=True).start()
-
-
-def _scope_mod():
-    spec = importlib.util.spec_from_file_location("lazyplugin_scope_api", _PLUGIN_DIR / "scope.py")
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)  # type: ignore[union-attr]
-    return mod
-
-
-def _run_create(job: str, idea: str, kind: str, source: str) -> None:
-    # a bare thread starts with empty contextvars, and this process serves several profiles
-    _scope_mod().run_in_scope(_create_worker, JOBS[job], idea, kind, source)
-
-
-def _stage(entry: dict, stage: str) -> None:
-    """Name the phase and stamp when it began: the page reads both to show real progress.
-
-    One model call is one blocking await inside the worker, so a stage that never changes is
-    information, not a stall — the page can say 'asking the model · 43s' and mean it.
-    """
-    entry["stage"] = stage
-    entry["stage_started"] = time.time()
-
-
-def _create_worker(entry: dict, idea: str, kind: str, source: str) -> None:
-    started = time.time()
-    timings: dict[str, float] = {}
-    try:
-        _stage(entry, "reading what you picked")
-        at = time.time()
-        context = _source_context(kind, source)
-        timings["source"] = round(time.time() - at, 2)
-        ctx, meta = _find_ctx()
-        llm = getattr(ctx, "llm", None) if ctx is not None else None
-        creator = _creator_mod()
-        _stage(entry, "asking the model for a spec")
-        if _scope_mod().secret_probe() is False:
-            entry.update(ok=False, stage="failed", error=_KEY_UNREADABLE)
-            return
-        at = time.time()
-        drafted = creator.draft_spec(idea, llm, context)
-        timings["model"] = round(time.time() - at, 2)
-        if not drafted.get("ok"):
-            drafted["ctx"] = meta
-            drafted["timings"] = timings
-            entry.update(ok=False, stage="refused", result=drafted,
-                         error=" ".join(drafted.get("problems") or []) or "the model gave no usable spec")
-            return
-        _stage(entry, "writing the files and validating")
-        at = time.time()
-        written = creator.create(drafted["spec"])
-        timings["files"] = round(time.time() - at, 2)
-        timings["total"] = round(time.time() - started, 2)
-        written["timings"] = timings
-        written["draft"] = {"stage": drafted.get("stage"), "meta": drafted.get("meta")}
-        written["source"] = {"kind": kind, "name": source, "chars": len(context)}
-        entry.update(ok=bool(written.get("ok")), stage="done", result=written,
-                     error=None if written.get("ok") else "the generated plugin did not validate")
-    except Exception as exc:
-        entry.update(ok=False, stage="failed", error=f"{type(exc).__name__}: {exc}"[:400])
-    finally:
-        entry["finished"] = time.time()
-        cutoff = time.time() - 3600
-        for key in [k for k, v in JOBS.items() if v.get("started", 0) < cutoff]:
-            JOBS.pop(key, None)
-
-
-@router.get("/create/job/{job}")
-async def create_job(job: str):
-    entry = JOBS.get(job)
-    if entry is None:
-        return {"ok": False, "job": job, "error": "unknown or expired job", "stage": "gone"}
-    return entry
 
 
 @router.get("/sources")

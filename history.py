@@ -47,7 +47,7 @@ def backfill(days: int = 90, max_sessions: Optional[int] = 200) -> dict:
     """Record gaps from past transcripts. Idempotent: re-running only bumps `seen`."""
     cutoff = time.time() - max(1, days) * 86400
     scanned = events = skipped_old = 0
-    replaced = CORE.clear_mined()
+    CORE.clear_mined()
     files = iter_files(max_sessions)
     for path in files:
         session_id = path.stem

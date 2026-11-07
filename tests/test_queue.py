@@ -31,7 +31,7 @@ def test_finish_removes_it(queue, tmp_path):
 
 
 def test_stale_requests_are_dropped_not_replayed(queue, tmp_path):
-    request = queue.enqueue(tmp_path, "watch gpu prices")
+    queue.enqueue(tmp_path, "watch gpu prices")
     path = next((tmp_path / "lazy-plugin" / "requests").glob("*.json"))
     import json
     import time

@@ -8,7 +8,6 @@ happy path, proved against a loopback server so it exercises a real request.
 import http.server
 import importlib.util
 import json
-import sys
 import threading
 from pathlib import Path
 
