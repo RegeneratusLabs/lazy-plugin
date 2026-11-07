@@ -10,7 +10,7 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const ID = 'lazy-plugin'
 const ROUTE = '/lazy-plugin'
-const BUILD = 'cradle-9'
+const BUILD = 'cradle-11'
 
 // Design language: docs/DESIGN.md — one ink, one ground, hairline ornament, monospace for facts.
 const CC = {
@@ -140,7 +140,6 @@ const CC_STYLE = `
 .cc-field { display: flex; flex-direction: column; gap: 3px; }
 .cc-preview { font-family: ${CC.mono}; font-size: .58rem; color: ${CC.muted}; margin-top: 8px;
   border-left: 1px solid ${CC.rule}; padding-left: 8px; }
-.cs-link { color: ${CC.accent}; text-decoration: none; border-bottom: 1px solid ${CC.rule}; }
 `
 
 const KIND_LABEL = {
@@ -192,6 +191,8 @@ function countsLine(rows) {
   if (tally.broken) parts.push(`${tally.broken} broken`)
   return parts.join(' · ')
 }
+
+let PLUGIN_CTX = null
 
 function makeApi(ctx) {
   const base = `/api/plugins/${ID}`
@@ -453,18 +454,34 @@ function pollJob(api, job, onStage) {
   })
 }
 
-function ExtLink({ href, children }) {
-  return jsx('a', {
-    href,
-    onClick: event => {
-      event.preventDefault()
-      if (host && host.openExternal) host.openExternal(href)
-      else window.open(href, '_blank', 'noopener')
-    },
-    className: 'cs-link',
-    style: { cursor: 'pointer' },
-    children
-  })
+// Opening a URL is `ctx.os.openExternal` on this SDK; `host.openExternal` was never a thing, which
+// is why the repo link did nothing. Falls back to the clipboard so a refused open still gives the
+// reader something they can use.
+async function openExternal(url) {
+  if (!url) return false
+  try {
+    if (PLUGIN_CTX && PLUGIN_CTX.os && typeof PLUGIN_CTX.os.openExternal === 'function') {
+      const opened = await PLUGIN_CTX.os.openExternal(url)
+      if (opened !== false) return 'opened'
+    }
+  } catch (err) { /* fall through to the other doors */ }
+  try {
+    if (host && typeof host.openExternal === 'function') {
+      const opened = await host.openExternal(url)
+      if (opened !== false) return 'opened'
+    }
+  } catch (err) { /* ditto */ }
+  try {
+    const opened = window.open(url, '_blank', 'noopener')
+    if (opened) return 'opened'
+  } catch (err) { /* ditto */ }
+  try {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(url)
+      return 'copied'
+    }
+  } catch (err) { /* nothing left to try */ }
+  return false
 }
 
 function TileButton({ onClick, disabled, primary, title, children }) {
@@ -502,6 +519,17 @@ function LedgerRow({ label, mark, tone, value, sub }) {
 }
 
 function PublishResult({ action, onPr }) {
+  const [note, setNote] = useState('')
+
+  // Same chip, same door as the tile's repo link: the URL is a thing you open, not text you copy.
+  function openLink(url) {
+    openExternal(url).then(result => {
+      if (result === 'copied') setNote('link copied — open it in a browser')
+      else if (!result) setNote('could not open that link')
+      else setNote('')
+    })
+  }
+
   if (!action.ok) {
     return jsx('div', {
       className: 'cc-row-value',
@@ -529,8 +557,27 @@ function PublishResult({ action, onPr }) {
         jsx('div', { children: `entry  ${action.entry}` }, 'e'),
         jsx('div', { className: 'cc-row-sub', children: `installable anywhere: ${action.install_command}` }, 'i')
       ] }),
-      action.pr
-        ? jsx('div', { className: 'cc-row-sub', children: `pull request  ${action.pr}` }, 'pr')
+      (action.repo || action.pr)
+        ? jsxs('div', {
+            style: { marginTop: '7px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' },
+            children: [
+              action.repo
+                ? jsx(TileButton, {
+                    onClick: () => openLink(action.repo),
+                    title: action.repo,
+                    children: 'repo ↗'
+                  }, 'repo-link')
+                : null,
+              action.pr
+                ? jsx(TileButton, {
+                    onClick: () => openLink(action.pr),
+                    title: action.pr,
+                    children: 'pull request ↗'
+                  }, 'pr-link')
+                : null,
+              note ? jsx('span', { className: 'cc-row-sub', children: note }, 'note') : null
+            ]
+          }, 'links')
         : null,
       (action.stage === 'pinned' || action.pr_error)
         ? jsxs('div', {
@@ -694,7 +741,9 @@ function Ledger({ out }) {
               fontFamily: CC.mono, fontSize: '.6rem', color: CC.paper
             },
             children: action.kind === 'publish'
-              ? PublishResult({ action, onPr: () => act('publish', true) })
+              // A component, not a function call: it holds useState now, and calling it inline puts
+              // its hooks in the Ledger's hook order (React then throws on the publish render).
+              ? jsx(PublishResult, { action, onPr: () => act('publish', true) })
               : jsx('div', {
                   style: { fontFamily: CC.mono, fontSize: '.6rem' },
                   children: jsx('div', {
@@ -1315,7 +1364,16 @@ function PluginTile({ plugin, onChanged }) {
             children: busy === 'remove' ? 'removing…' : confirming ? 'sure?' : 'remove'
           }),
           plugin.published
-            ? jsx(ExtLink, { href: plugin.published.repo, children: 'repo ↗' })
+            ? jsx(TileButton, {
+                onClick: () => {
+                  openExternal(plugin.published.repo).then(result => {
+                    if (result === 'copied') setNote('link copied — open it in a browser')
+                    else if (!result) setNote('could not open the repo link')
+                  })
+                },
+                title: plugin.published.repo,
+                children: 'repo ↗'
+              })
             : null
         ]
       }),
@@ -1486,6 +1544,7 @@ export default {
   id: ID,
   name: 'Lazy Plugin',
   register(ctx) {
+    PLUGIN_CTX = ctx
     const api = makeApi(ctx)
     CreatorPanel.__api = api
     LazyChip.__api = api
