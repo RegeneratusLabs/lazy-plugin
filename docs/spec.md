@@ -73,6 +73,7 @@ Nothing is written until the spec passes; nothing is offered for install until i
 | `works` | purrs | called, returned real results |
 | `needs-key` | needs a key | sound package, missing an env var |
 | `upstream` | blocked upstream | our side works; the far end refused |
+| `refused` | held back | not called: the try-out would have carried a key to a host it should not reach |
 | `scaffold` | half-built | the handler was never written |
 | `broken` | broken | would not load, or the handler raised |
 | `unchecked` | not tried out | no dispatch on record |

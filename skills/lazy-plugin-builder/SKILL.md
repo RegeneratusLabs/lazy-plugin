@@ -14,8 +14,10 @@ A build arrives here as a turn, so the request is the user message you already h
 queue to drain. When it names no URL, path or command, ask that one question instead of building a
 tool that does nothing.
 
-The page dispatches whatever lands itself, so do not claim success on your own word: end with the
-name, the validate line and the dispatch line, and let the verdict speak.
+A build does not call the code it just generated — the try-out is the user's click on the page, so
+the report will say "not tried out" and that is correct. Never claim a tool works on your own word
+(and never call one yourself to prove it): end with the name, the validate line and the dispatch
+line, and let the verdict speak.
 
 ## The loop
 
@@ -25,7 +27,8 @@ name, the validate line and the dispatch line, and let the verdict speak.
 2. **Render, don't freehand.** Handler bodies come from four shapes only:
    - `command` — the spec's argv as a list, never a shell string
    - `http` — `urlopen` of the spec's URL, JSON parsed when possible
-   - `file` — pathlib read/write of the spec's path
+   - `file` — pathlib read/write of one file inside the plugin's own data dir
+     (`$HERMES_HOME/plugin-data/<name>/`); the spec names a filename, never a path on the host
    - `stub` — raises `NotImplementedError` carrying the described behaviour
    The model writes the *spec*; the templates write the code. Hand-written Python for the body is
    how a plugin reaches the user broken.
@@ -60,21 +63,33 @@ before reporting a build, and check these every time:
 
 - **`file` tools must declare a param named literally `path`** (or a fixed `target`). Otherwise the
   spec is refused at the spec stage, before the validator even runs.
+- **A `file` target is a filename, not a place.** An absolute host path, a `~` path and `../x` are all
+  refused at spec time, because the generated handler is confined to its own data dir and would
+  answer "outside this plugin's data dir" on every call.
+- **Never declare one of Hermes' own credentials** (`OPENAI_API_KEY`, `GITHUB_TOKEN`,
+  `HERMES_…`). The spec is refused: a generated plugin asks for its own key, and the generated code
+  reads it through `agent.secret_scope.get_secret`, never a bare process environment read.
+- **A declared key is only carried to a public `https` host the handler names.** The try-out refuses
+  anything else — plain http, loopback, private or link-local addresses — and grades it `refused`
+  with the variable and host quoted, so a draft cannot post the host's key somewhere odd.
 - **The `file` template writes only when passed `write` and `content`.** Neither is a declared
   param, so a freshly generated tool silently falls through to *reading* the target and dies with
   `FileNotFoundError`. Rewrite the body to use the params you actually declared.
 - **The `http` template hardcodes the URL as a literal** (`base = '$site_url'`) and leaves `mapping`
   empty, so no caller param ever reaches the request. Build the URL from params.
 - **`smoke.py` samples params by exact name.** `url` → `https://example.com`, `path` →
-  `~/smoke.txt`, `query`/`q`/`text` → `cat`; anything unrecognised gets the junk string `test`.
+  `smoke.txt` (a filename in the plugin's data dir), `query`/`q`/`text` → `cat`; anything
+  unrecognised gets the junk string `test`.
   Name a fetch param `url` (keep a descriptive alias) or the smoke run always reports broken.
 - **`ok:false` is classified `broken`**, not a warning. A handler that refuses a junk input the
   smoke host invented fails the gate — validate only what you can genuinely check, write the rest
   verbatim with a `warning` field.
 
 `hermes plugins validate` passing does not mean the tools work: it checks the spec, the manifest and
-registration, not behaviour. The smoke verdict is the real signal — re-run it from the repo with
-`python3 -c "import smoke; from pathlib import Path; smoke.smoke(Path(bundle))"`.
+registration, not behaviour. The smoke verdict is the real signal, and it is the user's click on the
+page that produces one — from the repo it is
+`python3 -c "import smoke; from pathlib import Path; smoke.smoke(Path(bundle), live=True)"`, which
+dispatches for real.
 
 ## What not to do
 

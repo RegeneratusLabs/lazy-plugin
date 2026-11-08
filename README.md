@@ -118,6 +118,12 @@ hermes plugins validate .                    # every catalog gate
   wants a hand-written plugin, and the spec validator will refuse shapes it cannot render safely.
 - The try-out uses sample arguments (`date` → today, `domain` → example.com). A tool that needs a
   specific id will come back broken even if the code is fine — the receipt says why.
+- A build never calls the code it just generated: templates are rendered, the contract is checked,
+  and the try-out waits for your click on the page. When a tool declares a key, the try-out will
+  only carry it to a public `https` host the handler names, and never to one of Hermes' own
+  credentials — that case is graded `refused` with the variable and the host quoted.
+- A `file` tool reads and writes inside the plugin's own data dir (`~/.hermes/plugin-data/<name>/`).
+  It cannot be pointed at `~/.hermes/.env` or anywhere else on the host, by a spec or by a call.
 - Builds are agent turns, so they cost tokens and they take as long as your model thinks.
 
 MIT.

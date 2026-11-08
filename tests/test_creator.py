@@ -19,7 +19,7 @@ GOOD = {
          "kind": "http", "params": {"max_price": "integer price ceiling"},
          "target": "https://api.example.com/prices", "behaviour": "GET the prices endpoint."},
         {"name": "last_run", "description": "Read the last stored result.", "kind": "file",
-         "params": {}, "target": "~/.hermes/lazy-plugin/last-run.json",
+         "params": {}, "target": "last-run.json",
          "behaviour": "Read the stored result file."},
     ],
     "hooks": ["on_session_end"],
@@ -120,7 +120,7 @@ def test_render_emits_manifest_init_readme_and_skill(creator):
     assert 'toolset=PLUGIN["name"]' in files["__init__.py"]
 
 
-def test_generated_plugin_imports_and_registers_its_tools(creator, tmp_path):
+def test_generated_plugin_imports_and_registers_its_tools(creator, tmp_path, hermes_runtime):
     clean, _ = creator.validate_spec(GOOD)
     files = creator.render(clean)
     target = tmp_path / "gen"
@@ -157,7 +157,7 @@ def test_generated_plugin_imports_and_registers_its_tools(creator, tmp_path):
     assert any(r.get("hook") == "on_session_end" for r in registered)
 
 
-def test_handlers_return_errors_instead_of_raising(creator, tmp_path):
+def test_handlers_return_errors_instead_of_raising(creator, tmp_path, hermes_runtime):
     clean, _ = creator.validate_spec({**GOOD, "hooks": []})
     files = creator.render(clean)
     target = tmp_path / "gen2"
@@ -172,11 +172,14 @@ def test_handlers_return_errors_instead_of_raising(creator, tmp_path):
     # The template now holds a real URL, so an unset parameter is a network answer, not a raise.
     http_result = json.loads(module.handle_check_prices({}))
     assert http_result["ok"] is False and http_result.get("error")
+    # A configured relative path that does not exist yet is a named error, not an exception: the
+    # handler answers, and the answer says which file inside the data dir is missing.
     file_result = json.loads(module.handle_last_run({}))
-    assert file_result["ok"] is False and "no path is configured" in file_result["error"]
+    assert file_result["ok"] is False and "last-run.json" in file_result["error"]
 
 
-def test_file_handler_reads_a_real_path(creator, tmp_path):
+def test_file_handler_reads_inside_its_own_data_dir(creator, tmp_path):
+    """Confined, per the docstring: a generated file tool is not a reader of the host."""
     clean, _ = creator.validate_spec({**GOOD, "hooks": [], "tools": [
         {"name": "read_it", "description": "Read a file.", "kind": "file",
          "params": {"path": "file to read"}}]})
@@ -190,10 +193,19 @@ def test_file_handler_reads_a_real_path(creator, tmp_path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
 
-    target_file = tmp_path / "note.txt"
-    target_file.write_text("hello", encoding="utf-8")
-    result = json.loads(module.handle_read_it({"path": str(target_file)}))
-    assert result["ok"] is True and result["text"] == "hello"
+    # A relative name lands in the plugin's own data dir, and HERMES_HOME decides where that is.
+    written = json.loads(module.handle_read_it({"path": "note.txt", "write": True, "content": "hello"}))
+    assert written["ok"] is True, written
+    assert str(written["path"]).startswith(str(tmp_path / "plugin-data"))
+    assert json.loads(module.handle_read_it({"path": "note.txt"}))["text"] == "hello"
+
+    # Anything outside it is refused, read or write, relative escape or absolute path.
+    outside = tmp_path / "note.txt"
+    outside.write_text("host secret", encoding="utf-8")
+    for attempt in ({"path": str(outside)}, {"path": "../note.txt", "write": True, "content": "x"}):
+        result = json.loads(module.handle_read_it(attempt))
+        assert result["ok"] is False and "outside this plugin's data dir" in result["error"], result
+    assert outside.read_text(encoding="utf-8") == "host secret"
 
 
 def test_create_writes_to_the_outbox_and_validates(creator):
@@ -216,3 +228,45 @@ def test_create_refuses_a_bad_spec_without_writing(creator, tmp_path):
     out = creator.create({**GOOD, "name": "No"})
     assert out["ok"] is False and out["stage"] == "spec"
     assert not (tmp_path / "created" / "No").exists()
+
+
+def test_a_file_target_on_the_host_is_refused_at_spec_time(creator):
+    """The handler is confined, so an absolute target would only ever answer "outside"."""
+    for target in ("/etc/passwd", "~/.hermes/.env", "C:\\Users\\josh\\secret.txt"):
+        clean, problems = creator.validate_spec({**GOOD, "tools": [
+            {"name": "read_it", "description": "Read a file.", "kind": "file", "target": target}]})
+        assert clean is None and any("data dir" in p for p in problems), (target, problems)
+
+
+def test_a_generated_plugin_may_not_declare_a_hermes_credential(creator):
+    """A spec names the variable and the URL: one of Hermes' own keys must never be the variable."""
+    clean, problems = creator.validate_spec({**GOOD, "tools": [
+        {"name": "check_prices", "description": "Fetch prices.", "kind": "http",
+         "requires_env": ["OPENAI_API_KEY"], "target": "https://api.example.com/prices"}]})
+    assert clean is None
+    assert any("Hermes' own credential" in p for p in problems), problems
+
+
+def test_a_build_never_runs_the_code_it_generated(creator, tmp_path, monkeypatch, hermes_runtime):
+    """lazyplugin_create is reachable from a model turn, so the build must not dispatch anything."""
+    marker = tmp_path / "ran"
+    clean, _ = creator.validate_spec({**GOOD, "name": "marker-plugin", "hooks": [], "tools": [
+        {"name": "touch_marker", "description": "Write a marker file.", "kind": "command",
+         "target": f"touch {marker}"}]})
+    assert clean is not None
+
+    seen = {}
+    real = creator.smoke_plugin
+
+    def spy(path, live=False):
+        seen["live"] = live
+        return real(path, live=live)
+
+    monkeypatch.setattr(creator, "smoke_plugin", spy)
+    out = creator.create(clean)
+    assert out["ok"] is True
+    assert seen == {"live": False}
+    assert not marker.exists(), "the build ran a generated command"
+    assert out["smoke"]["tools"][0]["status"] == "skipped"
+    assert out["works"] is False
+    assert "not tried out" in out["headline"]

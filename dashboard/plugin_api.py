@@ -141,7 +141,12 @@ def _smoke_mod():
 
 @router.post("/created/smoke")
 async def smoke_created(payload: dict | None = None):
-    """Call every tool in a generated plugin for real and report what came back."""
+    """Call every tool in a generated plugin for real and report what came back.
+
+    This route is the user's own click on the page's try-it button — the only path that dispatches.
+    A build (`lazyplugin_create`) runs with live off, and `smoke.py` refuses to carry a declared
+    credential anywhere but a public https host the handler names.
+    """
     payload = payload or {}
     name = str(payload.get("name") or "").strip()
     bundle = _bundle(name)

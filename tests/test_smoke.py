@@ -45,8 +45,12 @@ def bundle(tmp_path, name="fixture-plugin", tool="do_it", requires=None, body=No
     return root
 
 
+HITS = []
+
+
 class _Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):  # noqa: N802 - http.server names it
+        HITS.append(self.path)
         payload = json.dumps({"results": [{"title": "a"}, {"title": "b"}]}).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -86,7 +90,7 @@ def loopback():
 
 
 def test_a_working_tool_is_graded_works(smoke_mod, tmp_path, loopback):
-    report = smoke_mod.smoke(make_http_bundle(tmp_path, loopback))
+    report = smoke_mod.smoke(make_http_bundle(tmp_path, loopback), live=True)
     assert report["verdict"] == "works", report
     assert report["tools"][0]["status"] == "works"
     assert "came back with real results" in smoke_mod.headline(report)
@@ -132,7 +136,7 @@ def register(ctx):
     ctx.register_tool(name="do_it", toolset="fixture", schema={"name": "do_it"},
                       handler=handle_do_it, description="x")
 """
-    report = smoke_mod.smoke(bundle(tmp_path, body=body))
+    report = smoke_mod.smoke(bundle(tmp_path, body=body), live=True)
     assert report["verdict"] == "broken"
     assert "KeyError" in report["tools"][0]["detail"]
 
@@ -165,3 +169,77 @@ def test_live_false_skips_the_call(smoke_mod, tmp_path, loopback):
     report = smoke_mod.smoke(make_http_bundle(tmp_path, loopback), live=False)
     assert report["tools"][0]["status"] == "skipped"
     assert report["verdict"] == "unchecked"
+
+
+def test_a_credential_is_not_carried_to_a_plain_http_host(smoke_mod, tmp_path, loopback, monkeypatch):
+    """A model drafts the variable and the URL. Over plain http, the key stays home."""
+    monkeypatch.setenv("FIXTURE_TOKEN", "sekrit")
+    source = make_http_bundle(tmp_path, loopback)
+    HITS.clear()
+    keyed = bundle(tmp_path, name="keyed-fixture", requires="FIXTURE_TOKEN",
+                   body=(source / "__init__.py").read_text(encoding="utf-8"))
+    report = smoke_mod.smoke(keyed, live=True)
+    assert report["verdict"] == "refused", report
+    assert report["tools"][0]["status"] == "refused"
+    assert "FIXTURE_TOKEN" in report["tools"][0]["detail"]
+    assert "not https" in report["tools"][0]["detail"]
+    assert HITS == [], "the refused tool still made a request"
+    assert "not tried out" in smoke_mod.headline(report)
+
+
+def test_a_hermes_credential_is_never_carried_anywhere(smoke_mod, tmp_path, monkeypatch):
+    """Even to a public https host: the host's own provider keys are not a plugin's to spend."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-not-a-real-key")
+    body = """
+import json, urllib.request
+
+def handle_do_it(params, **kwargs):
+    with urllib.request.urlopen("https://api.example.com/v1/search?q=cat", timeout=5) as response:
+        return json.dumps({"ok": True, "count": 1})
+
+def register(ctx):
+    ctx.register_tool(name="do_it", toolset="fixture", schema={"name": "do_it"},
+                      handler=handle_do_it, description="x")
+"""
+    report = smoke_mod.smoke(bundle(tmp_path, requires="OPENAI_API_KEY", body=body), live=True)
+    assert report["verdict"] == "refused", report
+    assert "Hermes' own credential" in report["tools"][0]["detail"]
+
+
+def test_egress_rules_are_literal(smoke_mod):
+    assert smoke_mod.egress_problem("https://api.example.com/v1") == ""
+    assert "not https" in smoke_mod.egress_problem("http://api.example.com/v1")
+    assert "loopback" in smoke_mod.egress_problem("https://127.0.0.1/v1") or \
+        "is 127" in smoke_mod.egress_problem("https://127.0.0.1/v1")
+    for host in ("https://169.254.169.254/latest/meta-data", "https://10.0.0.5/x",
+                 "https://192.168.1.1/x", "https://localhost/x", "https://box.local/x",
+                 "https://[::1]/x", "https://0.0.0.0/x"):
+        assert smoke_mod.egress_problem(host), host
+    assert smoke_mod.is_host_credential("ANTHROPIC_API_KEY")
+    assert smoke_mod.is_host_credential("GITHUB_TOKEN")
+    assert smoke_mod.is_host_credential("HERMES_ANYTHING")
+    assert not smoke_mod.is_host_credential("BREWERYDB_API_KEY")
+
+
+def test_a_write_tool_is_sampled_with_a_write(smoke_mod, tmp_path):
+    """Order of the test, not the template: a write body needs write=True or it reads a missing file."""
+    body = """
+import json, os
+from pathlib import Path
+
+def handle_do_it(params, **kwargs):
+    target = Path(os.environ["HERMES_HOME"]) / "note.txt"
+    if params.get("write"):
+        target.write_text(str(params.get("content") or ""), encoding="utf-8")
+        return json.dumps({"ok": True, "bytes": target.stat().st_size})
+    return json.dumps({"ok": True, "text": target.read_text()})
+
+def register(ctx):
+    ctx.register_tool(name="do_it", toolset="fixture",
+                      schema={"name": "do_it", "parameters": {"properties": {"path": {}}}},
+                      handler=handle_do_it, description="x")
+"""
+    report = smoke_mod.smoke(bundle(tmp_path, body=body), live=True)
+    assert report["tools"][0]["status"] == "works", report
+    assert report["tools"][0]["params"]["write"] is True
+    assert report["tools"][0]["params"]["content"] == "lazy plugin smoke"

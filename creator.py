@@ -8,7 +8,10 @@ capabilities it provides, and cannot contain injected code. `hermes plugins vali
 Handler kinds are deliberately limited to three safe shapes:
   command -> run a binary with arguments from config      (subprocess, list argv, no shell)
   http    -> GET/POST a URL with headers from config      (urllib, timeout, json)
-  file    -> read or write a path from config             (pathlib, confined to PLUGIN_DATA)
+  file    -> read or write one file in the plugin's data  (pathlib, confined to its own dir)
+
+Handler kinds are fixed templates, so a spec cannot inject code; a declared credential is read
+through Hermes' profile secret scope, and a `file` tool is confined to the plugin's own data dir.
 
 Anything else is a stub: the handler raises NotImplementedError with the described behaviour in the
 docstring, which is honest and shows the next developer exactly what to write.
@@ -144,13 +147,29 @@ def validate_spec(spec: dict) -> tuple[Optional[dict], list]:
             problems.append(f"{tool_name}: a file tool needs target, or a declared `path` parameter "
                             "the caller can fill — otherwise it can only answer \"no path is configured\"")
             continue
+        if kind == "file" and target and (target.startswith(("/", "~")) or target[1:3] == ":\\"):
+            # The generated handler is confined to the plugin's own data dir, so an absolute target
+            # would render a tool that refuses every call. Refuse the spec here, where the model can
+            # still be asked for a filename.
+            problems.append(f"{tool_name}: target {target!r} is a place on the host — a file tool "
+                            "only touches its own data dir, so name a file (\"last-run.json\")")
+            continue
+        env_names = [_clean(e, 60) for e in (raw.get("requires_env") or []) if _clean(e, 60)][:4]
+        blocked = [name for name in env_names if _smoke_mod().is_host_credential(name)]
+        if blocked:
+            # A spec names both the variable and the URL it is spent at. Handing over one of Hermes'
+            # own keys would make "try it out" a way to post the host's credentials anywhere.
+            problems.append(f"{tool_name}: {', '.join(blocked)} is Hermes' own credential — a "
+                            "generated plugin may not declare it; ask for the plugin's own key")
+            continue
         tools.append({
             "name": tool_name,
             "description": _clean(raw.get("description"), 200) or tool_name,
             "kind": kind,
             "request": clean_request,
             "params": clean_params,
-            "requires_env": [_clean(e, 60) for e in (raw.get("requires_env") or []) if _clean(e, 60)][:4],
+            "requires_env": env_names,
+            "target": target,
             "behaviour": _clean(raw.get("behaviour"), 300),
         })
 
@@ -264,10 +283,21 @@ BODIES = {
     return json.dumps({{"ok": True, "url": url,
                        "count": len(items) if isinstance(items, list) else 1,
                        "items": items}}, ensure_ascii=False)''',
-    "file": '''    path = params.get("path") or {path_default!r}
-    if not path:
+    "file": '''    root = _data_dir()
+    raw = params.get("path") or {path_default!r}
+    if not raw:
         return json.dumps({{"ok": False, "error": "no path is configured for {tool}"}})
-    target = Path(os.path.expanduser(str(path)))
+    target = Path(os.path.expanduser(str(raw)))
+    if not target.is_absolute():
+        target = root / target
+    root.mkdir(parents=True, exist_ok=True)
+    try:
+        target = target.resolve()
+        target.relative_to(root.resolve())
+    except ValueError:
+        return json.dumps({{"ok": False,
+                           "error": f"{{target}} is outside this plugin's data dir ({{root}}) — "
+                                    "a generated file tool only touches its own files"}})
     try:
         if params.get("write"):
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -360,14 +390,37 @@ def render(spec: dict) -> dict:
         "",
         "def _token(value):",
         "    # Replace $env:NAME anywhere in a value; a missing variable is a named error, not a 401.",
+        "    # The credential comes from Hermes' profile secret scope, not os.environ: one process serves",
+        "    # several profiles, so the environment answers with whichever .env launched it.",
+        "    from agent.secret_scope import get_secret",
+        "",
         "    def sub(match):",
         "        name = match.group(1)",
-        "        found = os.environ.get(name)",
+        "        try:",
+        "            found = get_secret(name)",
+        "        except Exception as exc:",
+        "            raise ValueError(name + \" cannot be read here: \" + type(exc).__name__)",
         "        if not found:",
         "            raise ValueError(name + \" is not set — put it in ~/.hermes/.env\")",
         "        return str(found)",
         "    return re.sub(r'\\$env:([A-Za-z_][A-Za-z0-9_]*)', sub, str(value))",
     ]) if needs_urllib else ""
+    data_helper = chr(10).join([
+        "",
+        "",
+        "def _data_dir():",
+        "    # This plugin's own data dir: the only place its file tools read or write. A generated file",
+        "    # tool is handed a filename by a spec a model drafted, so it never gets a place on the host",
+        "    # — a tool that could be pointed at ~/.hermes/.env is a secret reader, not a tool.",
+        "    try:",
+        "        from hermes_constants import get_hermes_home",
+        "        home = Path(get_hermes_home())",
+        "    except Exception:",
+        "        home = Path(os.environ.get(\"HERMES_HOME\") or (Path.home() / \".hermes\"))",
+        "    data = home / \"plugin-data\" / PLUGIN[\"name\"]",
+        "    data.mkdir(parents=True, exist_ok=True)",
+        "    return data",
+    ]) if needs_pathlib else ""
     params_hint = {t["name"]: t["params"] for t in tools if t["params"]}
     handler_block = chr(10).join(handlers)
     description_block = chr(10).join(f'    {t["name"]!r}: {t["description"]!r},' for t in tools)
@@ -381,7 +434,7 @@ Generated by Lazy Plugin from a described idea. Handler bodies are templates cho
 """
 
 {chr(10).join(imports)}
-{dig_helper}
+{dig_helper}{data_helper}
 
 PLUGIN = {{
     "name": {name!r},
@@ -450,6 +503,8 @@ ln -s /path/to/{name} ~/.hermes/plugins/{name}
 
 Generated by Lazy Plugin from a description{' based on ' + spec['origin'] if spec.get('origin') else ''}.
 Handler bodies follow the template for their declared kind (`command`, `http`, `file`, or a stub).
+A `file` tool only reads and writes inside this plugin's own data dir (`~/.hermes/plugin-data/{name}/`),
+and credentials are resolved through Hermes' profile secret scope, never a bare `os.environ` read.
 Read the code before installing; nothing here is installed for you.
 """
 
@@ -544,10 +599,13 @@ Rules that decide whether this plugin is usable:
   `fields` maps your output label to the dotted path inside each result. An http tool with no
   request.url is refused, because a tool that fetches nothing is not a plugin.
 - "target" is a shorthand for request.url when there is exactly one.
-- kind=file when the job reads or writes a path.
+- kind=file when the job reads or writes one of the plugin's own files. Its target is a filename
+  inside the plugin's data dir ("last-run.json"), never a path on the host: a generated file tool
+  cannot be pointed at ~/… or /etc/… and will be refused if it tries.
 - kind=stub ONLY when the job needs real logic that templates cannot express; then `behaviour`
   must describe exactly what a developer should write.
-- requires_env lists env vars the tool needs, or omit it.
+- requires_env lists the plugin's OWN credentials (EXAMPLE_API_KEY), or omit it. Hermes' own keys
+  (OPENAI_API_KEY, GITHUB_TOKEN, …) are refused: a generated plugin never spends them.
 - No prose outside the JSON. No code fences."""
 
 
@@ -785,9 +843,12 @@ def create(spec: dict, outbox: Optional[Path] = None) -> dict:
                 "error": "the generated code does not meet the Hermes plugin contract: "
                          + "; ".join(violations[:3])}
 
-    # Structure is not behaviour: load it and call every tool once. A build that cannot run is
-    # reported as such now, not discovered later by whoever installs it.
-    report = smoke_plugin(target)
+    # Structure is not behaviour: load it, register it, and hold every handler to its contract.
+    # live=False on purpose — this function is reachable from a model turn (`lazyplugin_create`), and
+    # a spec's `command` argv and `http` URL both come from the model's own draft. Nothing here may
+    # execute generated code on the host or spend a URL. The real try-out is the user pressing
+    # "try it" on the page (POST /created/smoke), where a person is deciding, not a tool call.
+    report = smoke_plugin(target, live=False)
     # Seed the page's validation cache with what this build already proved, so the first tile
     # fetch doesn't pay the validator subprocess (~2.6 s) all over again.
     _remember_validation(target, check)
@@ -821,8 +882,12 @@ def _smoke_mod():
     return module
 
 
-def smoke_plugin(path: Path, live: bool = True) -> dict:
-    """Run the smoke test and keep the report beside the bundle, so a tile can show it."""
+def smoke_plugin(path: Path, live: bool = False) -> dict:
+    """Run the smoke test and keep the report beside the bundle, so a tile can show it.
+
+    live defaults to False: dispatch is the expensive, side-effecting half and only the page's own
+    "try it" button (and the tests) should ask for it.
+    """
     try:
         module = _smoke_mod()
         report = module.smoke(path, live=live)

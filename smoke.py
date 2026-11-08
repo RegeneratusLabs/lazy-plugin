@@ -15,20 +15,28 @@ The grading is deliberately blunt, because "valid" is what lied to us:
 
 Never installs anything, never writes outside a temp dir, and does not call a tool whose declared
 key is absent — no point spending a paid request to learn a variable is unset.
+
+The live run has a second gate, because the thing being tried out was drafted by a model: a declared
+credential is only ever carried to a plain public https host the handler's own code names, and
+Hermes' own keys (provider keys, gateway tokens, dashboard secrets) are never carried anywhere. A
+spec that asks for one is refused with the reason instead of being run.
 """
 
 from __future__ import annotations
 
 import importlib.util
 import datetime
+import ipaddress
 import re
 import inspect
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any, Optional
 
@@ -80,10 +88,25 @@ _SAMPLES = {
     "budget": 100,
     "latitude": -26.65,
     "longitude": 153.07,
-    "path": "~/smoke.txt",
+    "path": "smoke.txt",
     "name": "smoke",
 }
 _NUMERIC_HINTS = ("limit", "count", "max", "min", "price", "threshold", "num", "size", "lat", "lon")
+
+
+def _sample_write(handler: Any, params: dict) -> dict:
+    """Give a write-capable file tool a write, so the try-out proves the round trip.
+
+    Without this the sample only reads a file that cannot exist yet and the receipt says broken —
+    which blames the template for the order of the test.
+    """
+    try:
+        source = inspect.getsource(handler)
+    except (OSError, TypeError):
+        return params
+    if '"write"' in source or "'write'" in source:
+        return {**params, "write": True, "content": "lazy plugin smoke"}
+    return params
 
 
 def sample_params(params: Optional[dict]) -> dict:
@@ -290,6 +313,135 @@ def _declared_env(bundle: Path) -> list:
     return names
 
 
+# ---------- what a live run may carry, and where
+
+# Hermes' own credentials. A generated plugin must never be handed one, because a spec chooses BOTH
+# the variable and the URL, and the handler spends the one at the other — so "try it out" would post
+# whatever the draft asked for.
+_STATIC_HOST_SECRETS = frozenset({
+    # provider keys, in case the registry cannot be imported
+    "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY",
+    "DEEPSEEK_API_KEY", "OPENROUTER_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY", "XAI_API_KEY",
+    "TOGETHER_API_KEY", "NOUS_API_KEY", "HF_TOKEN", "HUGGINGFACE_API_KEY", "MINIMAX_API_KEY",
+    "ELEVENLABS_API_KEY", "EXA_API_KEY", "OPENCODE_ZEN_API_KEY", "OPENCODE_GO_API_KEY",
+    # Tier-1 infrastructure secrets: no generated child ever needs them
+    "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_APP_PRIVATE_KEY_PATH", "TELEGRAM_BOT_TOKEN",
+    "DISCORD_BOT_TOKEN", "SLACK_BOT_TOKEN", "SLACK_APP_TOKEN", "SLACK_SIGNING_SECRET",
+    "GATEWAY_RELAY_SECRET", "GATEWAY_RELAY_DELIVERY_KEY", "EMAIL_PASSWORD",
+    "MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET", "DAYTONA_API_KEY",
+})
+
+_PRIVATE_HOST_SUFFIXES = (".localhost", ".local", ".internal", ".home.arpa", ".onion")
+
+
+def _host_secret_names() -> frozenset:
+    """Every env name Hermes itself spends a credential under.
+
+    Provider keys come from the provider registry Hermes routes with — the same authority its own
+    environment policy reads — so a new provider is covered without a line here. The static set is
+    the Tier-1 infrastructure list plus a fallback for a checkout that cannot import the registry.
+    """
+    names = set(_STATIC_HOST_SECRETS)
+    try:
+        from hermes_cli.auth import PROVIDER_REGISTRY
+
+        for config in PROVIDER_REGISTRY.values():
+            names.update(getattr(config, "api_key_env_vars", ()) or ())
+    except Exception:
+        pass
+    return frozenset(str(name).upper() for name in names)
+
+
+def is_host_credential(name: str) -> bool:
+    """True when *name* is one of Hermes' own credentials (or any of its internals)."""
+    upper = str(name or "").strip().upper()
+    return bool(upper) and (upper.startswith("HERMES_") or upper in _host_secret_names())
+
+
+def egress_problem(url: str) -> str:
+    """Why a credential may not be carried to *url*; '' when the destination is a public https host.
+
+    A model drafts both ends of this trip, so the destination is checked before anything is spent:
+    https only, no loopback, no private or link-local address (169.254.169.254 included), no
+    dot-local name, and a name has to resolve somewhere public to count.
+    """
+    try:
+        parts = urllib.parse.urlsplit(str(url or "").strip())
+    except ValueError:
+        return "unreadable url"
+    scheme = (parts.scheme or "").lower()
+    if scheme != "https":
+        return f"{scheme or 'no'} scheme, not https"
+    host = (parts.hostname or "").strip().strip(".").lower()
+    if not host:
+        return "no host"
+    if host == "localhost" or host.endswith(_PRIVATE_HOST_SUFFIXES):
+        return f"{host} is a local name"
+    try:
+        addresses = [ipaddress.ip_address(host)]
+    except ValueError:
+        try:
+            addresses = [ipaddress.ip_address(info[4][0]) for info in socket.getaddrinfo(host, None)]
+        except Exception:
+            addresses = []
+    for address in addresses:
+        if (address.is_loopback or address.is_private or address.is_link_local
+                or address.is_multicast or address.is_reserved or address.is_unspecified):
+            return f"{host} is {address}"
+    return ""
+
+
+def _tool_urls(handler: Any) -> list:
+    """Every http(s) URL literal in the handler's own code: where the spec said it would go.
+
+    A bare scheme prefix ("https://" from the template's own scheme repair) is not a destination, so
+    a candidate only counts when it parses to a host.
+    """
+    found, seen = [], set()
+
+    def walk(code: Any) -> None:
+        for const in getattr(code, "co_consts", ()) or ():
+            if isinstance(const, str):
+                text = const.strip()
+                if text.lower().startswith(("http://", "https://")) and text not in seen:
+                    seen.add(text)
+                    try:
+                        if urllib.parse.urlsplit(text).hostname:
+                            found.append(text)
+                    except ValueError:
+                        pass
+            elif hasattr(const, "co_consts"):
+                walk(const)
+
+    walk(getattr(handler, "__code__", None))
+    return found
+
+
+def dispatch_refusal(bundle: Path, handler: Any) -> str:
+    """'' when the live call may go ahead; otherwise the sentence saying why it must not.
+
+    With no declared credential there is nothing of the host's to leak, so the call is the ordinary
+    risk the user took by pressing try-out. With one, the destination has to be checkable: a name
+    the code actually contains, https, public.
+    """
+    declared = _declared_env(bundle)
+    if not declared:
+        return ""
+    blocked = [name for name in declared if is_host_credential(name)]
+    if blocked:
+        return (f"{', '.join(blocked)} is Hermes' own credential — a generated plugin never gets "
+                "one, so it was not called")
+    urls = _tool_urls(handler)
+    if not urls:
+        return (f"{', '.join(declared)} would be sent to a host the handler never names — "
+                "not called")
+    for url in urls:
+        problem = egress_problem(url)
+        if problem:
+            return f"{', '.join(declared)} would be sent to {url} ({problem}) — not called"
+    return ""
+
+
 def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
     """Dispatch one tool in a throwaway HERMES_HOME, so nothing installed elsewhere can answer."""
     agent = _agent_home()
@@ -305,12 +457,14 @@ def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
         (Path(home) / "config.yaml").write_text(
             "plugins:\n  enabled:\n    - " + bundle.name + "\n", encoding="utf-8")
         # Generated code runs in here. It gets the variables it declared and nothing else — not the
-        # gateway's provider keys, not its GitHub token.
+        # gateway's provider keys, not its GitHub token. Belt and braces with dispatch_refusal():
+        # even if a caller reached this without checking the destination, a Hermes credential in a
+        # declared list is dropped here rather than exported.
         keep = {"PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TERM"}
         env = {name: os.environ[name] for name in keep if name in os.environ}
         env.update({"HERMES_HOME": home, "PYTHONUNBUFFERED": "1", "PYTHONPATH": str(agent)})
         for name in _declared_env(bundle):
-            if name in os.environ:
+            if name in os.environ and not is_host_credential(name):
                 env[name] = os.environ[name]
         try:
             proc = subprocess.run([_interpreter(), "-c", DISPATCH, tool, json.dumps(params)],
@@ -342,9 +496,13 @@ def _dispatch(bundle: Path, tool: str, params: dict, timeout: float) -> dict:
     return {"status": status, "detail": detail, "result": result}
 
 
-def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
+def smoke(bundle: Path, config: Optional[dict] = None, live: bool = False,
           timeout: float = MAX_SECONDS) -> dict:
-    """Grade one generated plugin. Never raises: a smoke result is always a result."""
+    """Grade one generated plugin. Never raises: a smoke result is always a result.
+
+    live defaults to False: dispatch executes generated code and spends URLs, so it only happens when
+    a caller asks — the page's try-it button, or a test proving the gate.
+    """
     bundle = Path(bundle)
     started = time.time()
     report: dict[str, Any] = {"plugin": bundle.name, "bundle": str(bundle),
@@ -402,8 +560,17 @@ def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
             row["detail"] = "live calls disabled"
             report["tools"].append(row)
             continue
-        params = sample_params(params_hint.get(name) or
-                               (schema.get("parameters") or {}).get("properties"))
+        refusal = dispatch_refusal(bundle, handler)
+        if refusal:
+            # A model drafted both the variable and the URL, so the try-out is where a key would
+            # leave the machine. Not called is the whole point of the gate, and the receipt says
+            # which credential and which host so the reader can judge the draft.
+            row["status"] = "refused"
+            row["detail"] = refusal
+            report["tools"].append(row)
+            continue
+        params = _sample_write(handler, sample_params(
+            params_hint.get(name) or (schema.get("parameters") or {}).get("properties")))
         started_call = time.time()
         dispatched = _dispatch(bundle, name, params, timeout)
         row.update({"status": dispatched["status"], "detail": dispatched["detail"],
@@ -422,6 +589,10 @@ def smoke(bundle: Path, config: Optional[dict] = None, live: bool = True,
         # A handler nobody wrote is unfinished work, not a failure to load. Grading it "broken" made
         # a green validation line sit above a red receipt, which reads as a lie.
         report["verdict"] = "scaffold"
+    elif "refused" in statuses:
+        # Nothing was called and nothing was wrong with the code: the try-out would have posted a
+        # credential somewhere it does not belong.
+        report["verdict"] = "refused"
     elif "needs-key" in statuses:
         report["verdict"] = "needs-key"
     elif "upstream" in statuses:
@@ -447,13 +618,16 @@ def headline(report: dict) -> str:
     if verdict == "scaffold":
         stub = next((row for row in report["tools"] if row["status"] == "scaffold"), None)
         return f"half-built — nothing was ever written in {stub['tool'] if stub else 'it'}"
+    if verdict == "refused":
+        detail = "; ".join(row["detail"] for row in report["tools"] if row["status"] == "refused")
+        return f"not tried out — {detail}"
     if verdict == "broken":
         first = next((row for row in report["tools"] if row["status"] in ("broken", "scaffold")), None)
         note = report["notes"][0] if report.get("notes") else (first or {}).get("detail", "")
         if first and first.get("status") == "scaffold":
             return f"half-built — nothing was ever written in {first['tool']}"
         return f"broken: {note}" if note else "broken"
-    return "not tried out"
+    return "not tried out yet — press try it to call each tool for real"
 
 
 def write_report(bundle: Path, report: dict) -> Path:

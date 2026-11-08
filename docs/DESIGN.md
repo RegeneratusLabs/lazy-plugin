@@ -68,6 +68,7 @@ terminator if one is needed.
 | `works` | accent | purrs — search_wikipedia came back with real results |
 | `needs-key` | warn | solid build, just wants a key: set TENOR_API_KEY |
 | `upstream` | warn | our side works, the far end turned us away: HTTP 403 |
+| `refused` | warn | not tried out — TENOR_API_KEY would be sent to http://… (http scheme, not https) |
 | `scaffold` | fail | broken: nothing was ever written in check_price |
 | `broken` | fail | broken: <the loader's own error line> |
 | `unchecked` | quiet | not tried out yet — give it a pounce |

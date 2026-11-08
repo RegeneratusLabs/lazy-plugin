@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -12,6 +13,20 @@ SKILLS = FIXTURES / "skills"
 
 if str(FIXTURES) not in sys.path:
     sys.path.insert(0, str(FIXTURES))
+
+# A generated handler resolves its credential through `agent.secret_scope` — the runtime it is built
+# for, and the only way a per-profile secret is readable. The suite needs that package on sys.path to
+# import the code it just rendered; without a Hermes install those tests skip rather than pretend.
+HERMES_AGENT = Path(os.environ.get("HERMES_AGENT_HOME") or (Path.home() / ".hermes" / "hermes-agent"))
+if (HERMES_AGENT / "agent" / "secret_scope.py").exists() and str(HERMES_AGENT) not in sys.path:
+    sys.path.insert(0, str(HERMES_AGENT))
+
+
+@pytest.fixture()
+def hermes_runtime():
+    """Skip when there is no Hermes install to import `agent.secret_scope` from."""
+    if not (HERMES_AGENT / "agent" / "secret_scope.py").exists():
+        pytest.skip("needs a Hermes install (agent.secret_scope) to import generated handlers")
 
 
 def load_core(monkeypatch, tmp_path, url: str | None = None):

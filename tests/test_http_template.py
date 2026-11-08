@@ -91,7 +91,7 @@ def _build(creator, tmp_path, base, name="loopback-gifs"):
     return module
 
 
-def test_query_params_env_key_and_projection(creator, tmp_path, loopback, monkeypatch):
+def test_query_params_env_key_and_projection(creator, tmp_path, loopback, monkeypatch, hermes_runtime):
     monkeypatch.setenv("LOOPBACK_TOKEN", "secret-value")
     module = _build(creator, tmp_path, loopback)
     out = json.loads(module.HANDLERS["search_gifs"]({"query": "cats", "limit": 2}))
@@ -105,7 +105,7 @@ def test_query_params_env_key_and_projection(creator, tmp_path, loopback, monkey
     assert seen["auth"] == "Bearer secret-value"
 
 
-def test_a_missing_key_is_named_not_401(creator, tmp_path, loopback, monkeypatch):
+def test_a_missing_key_is_named_not_401(creator, tmp_path, loopback, monkeypatch, hermes_runtime):
     monkeypatch.delenv("LOOPBACK_TOKEN", raising=False)
     module = _build(creator, tmp_path, loopback, name="loopback-missing-key")
     out = json.loads(module.HANDLERS["search_gifs"]({}))

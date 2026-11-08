@@ -179,6 +179,7 @@ const VERDICT = {
   works: { word: 'purrs', tone: 'runs' },
   'needs-key': { word: 'needs a key', tone: 'key' },
   upstream: { word: 'blocked upstream', tone: 'key' },
+  refused: { word: 'held back', tone: 'warn' },
   scaffold: { word: 'half-built', tone: 'broken' },
   broken: { word: 'broken', tone: 'broken' },
   unchecked: { word: 'not tried out', tone: 'quiet' }
@@ -188,6 +189,7 @@ const FALLBACK_SENTENCE = {
   works: 'it came back with real results',
   'needs-key': 'solid build, just wants a key',
   upstream: 'our side works, the far end turned us away',
+  refused: 'not tried out: the try-out would have sent a key somewhere it does not belong',
   scaffold: 'broken: nothing was ever written in it',
   broken: 'broken: it would not load',
   unchecked: 'not tried out yet — give it a pounce'
@@ -298,10 +300,9 @@ function chatPrompt(payload) {
       'and rightly so.',
     '4. Never install anything, never touch ~/.hermes/plugins, never edit the catalog. The bundle ' +
       'stays in ~/.hermes/lazy-plugin/created/<name>/ and I decide about installing.',
-    '5. lazyplugin_create returns a validation line and a dispatch report. The bundle counts as ' +
-      'done only when the dispatch verdict is `works`. If it is not, fix the spec (target, params, ' +
-      'projection) and call lazyplugin_create again under a new name — or stop and quote me the ' +
-      'exact failing line.',
+    '5. lazyplugin_create returns a validation line and a dispatch report. Nothing is called during ' +
+      'the build — the try-out is my click on the page, so the report will say "not tried out". Do ' +
+      'not claim a tool works and do not call one yourself to prove it.',
     '6. End your reply with three lines: the plugin name, the validate line, the dispatch line.'
   ].join('\n')
 }
