@@ -630,12 +630,15 @@ function PublishResult({ action, onPr }) {
         ? jsxs('div', {
             style: { marginTop: '6px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' },
             children: [
-              jsx(TileButton, { onClick: onPr, children: 'open the pull request' }),
+              jsx(TileButton, {
+                onClick: onPr,
+                children: action.pr_error ? 'try the pull request again' : 'open the pull request'
+              }),
               jsx('span', {
                 className: 'cc-row-sub',
                 children: action.pr_error
                   ? action.pr_error
-                  : 'one PR to NousResearch/hermes-agent, reviewed by a maintainer'
+                  : 'the repo and the entry are pinned; this submits them to NousResearch/hermes-agent'
               })
             ]
           })
@@ -657,7 +660,10 @@ function Ledger({ out }) {
   const [action, setAction] = useState(null)
   const [busyAction, setBusyAction] = useState('')
 
-  function act(kind, openPr = false) {
+  // Publish is the whole pathway, PR included: the spec says one action, and a run that stops at
+  // "pinned" reads as shipped while nothing was ever submitted. `openPr` stays overridable so the
+  // result card can retry a PR that failed without re-deciding the question.
+  function act(kind, openPr = kind === 'publish') {
     setBusyAction(kind)
     setAction({ kind, stage: 'starting…' })
     if (kind === 'uninstall') {

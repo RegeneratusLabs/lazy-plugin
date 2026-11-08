@@ -148,6 +148,31 @@ def test_install_local_refuses_an_unvalidated_package(publish, tmp_path):
     assert not (tmp_path / "plugins" / "x").exists()
 
 
+def test_the_entry_is_kept_out_of_the_plugin_repo(publish, bundle):
+    """The entry names the SHA of the commit it ships, so it cannot live inside that commit."""
+    identity = {"login": "RegeneratusLabs", "email": "x@users.noreply.github.com"}
+    publish.git_commit(bundle, "gpu-price-watch 0.3.0", identity, Recorder())
+    assert "plugin-catalog/" in (bundle / ".gitignore").read_text().splitlines()
+
+
+def test_a_bundle_made_before_the_rule_learns_it_on_the_next_publish(publish, bundle):
+    """Older bundles carry the old ignore file; the next publish backfills instead of committing."""
+    (bundle / ".gitignore").write_text("__pycache__/\n*.pyc\n", encoding="utf-8")
+    identity = {"login": "RegeneratusLabs", "email": "x@users.noreply.github.com"}
+    publish.git_commit(bundle, "gpu-price-watch 0.3.0", identity, Recorder())
+    lines = (bundle / ".gitignore").read_text().splitlines()
+    assert lines[:2] == ["__pycache__/", "*.pyc"]
+    assert "plugin-catalog/" in lines and "*.tar.gz" in lines
+
+
+def test_publish_from_the_page_opens_the_pr_in_one_click():
+    """`act('publish')` must submit, not stop at `pinned` — the page is the only caller, and a
+    publish that stops short reads as shipped while the catalog never hears about it."""
+    page = (ROOT / "desktop" / "plugin.js").read_text(encoding="utf-8")
+    assert "function act(kind, openPr = kind === 'publish')" in page
+    assert "act('publish', true)" not in page.replace("onPr: () => act('publish', true)", "")
+
+
 def test_catalog_entry_validates_against_the_real_catalog_checker(publish, bundle):
     """The entry the user gets must pass the same structural validator CI runs."""
     checker = Path.home() / ".hermes" / "hermes-agent" / "scripts" / "validate_plugin_catalog.py"

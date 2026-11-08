@@ -24,7 +24,11 @@ HERMES_REPO = "NousResearch/hermes-agent"
 CATALOG_DIR = "plugin-catalog"
 # Cosmetic catalog assets, by convention. Missing files are simply not emitted.
 ASSETS = {"image": "assets/banner.png", "screenshots": ["assets/preview.png"]}
-GITIGNORE = "__pycache__/\n*.pyc\n*.tar.gz\n.gitignore\n"
+# `plugin-catalog/` is written into the bundle *after* the push, because an entry has to name the SHA
+# of the commit it ships. Ignoring it keeps it out of the plugin repo: an entry committed there would
+# name a commit that does not contain it, and the next publish would pin a SHA carrying the previous
+# entry — drift that a reviewer sees as an unexplained file.
+GITIGNORE = "__pycache__/\n*.pyc\n*.tar.gz\n.gitignore\nplugin-catalog/\n"
 
 
 class PublishError(Exception):
@@ -76,8 +80,16 @@ def git_commit(bundle: Path, message: str, identity: dict,
     if not (bundle / ".git").exists():
         run(["git", "init", "-q"], cwd=bundle)
     ignore = bundle / ".gitignore"
-    if not ignore.exists():
-        ignore.write_text(GITIGNORE, encoding="utf-8")
+    # A bundle created before `plugin-catalog/` was ignored still has the old file; backfill the
+    # missing lines rather than leaving that one bundle to commit its entry on the next publish.
+    wanted = [line for line in GITIGNORE.splitlines() if line]
+    try:
+        present = ignore.read_text(encoding="utf-8").splitlines() if ignore.exists() else []
+    except OSError:
+        present = []
+    if [line for line in wanted if line not in present]:
+        ignore.write_text("\n".join(present + [line for line in wanted if line not in present]) + "\n",
+                          encoding="utf-8")
     run(["git", "add", "-A"], cwd=bundle)
     staged = run(["git", "status", "--porcelain"], cwd=bundle)
     if staged:
